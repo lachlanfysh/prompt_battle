@@ -235,7 +235,20 @@ export default function CentralDisplay() {
                   boxShadow: 'inset 2px 2px 0px #999'
                 }}>
                   <h2 className="font-bold mb-2" style={{ fontSize: '14px' }}>TARGET:</h2>
-                  <p style={{ fontSize: '12px' }}>{gameState.target}</p>
+                  {gameState.target.type === 'image' ? (
+                    <div className="flex flex-col items-center space-y-3">
+                      <img 
+                        src={gameState.target.imageUrl} 
+                        alt="Challenge"
+                        className="max-w-full max-h-72 object-contain border-2 border-gray-400"
+                      />
+                      <p style={{ fontSize: '12px' }} className="text-center font-medium">
+                        {gameState.target.content}
+                      </p>
+                    </div>
+                  ) : (
+                    <p style={{ fontSize: '12px' }}>{gameState.target.content || gameState.target}</p>
+                  )}
                 </div>
               )}
             </div>

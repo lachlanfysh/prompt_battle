@@ -193,7 +193,20 @@ export default function PlayerInterface({ playerId }) {
                   boxShadow: 'inset 2px 2px 0px #999'
                 }}>
                   <h3 className="font-bold mb-2" style={{ fontSize: '12px' }}>TARGET:</h3>
-                  <p style={{ fontSize: '11px' }}>{gameState.target}</p>
+                  {gameState.target.type === 'image' ? (
+                    <div className="flex flex-col items-center space-y-2">
+                      <img 
+                        src={gameState.target.imageUrl} 
+                        alt="Challenge"
+                        className="max-w-full h-48 object-contain border border-gray-300"
+                      />
+                      <p style={{ fontSize: '11px' }} className="text-center font-medium">
+                        {gameState.target.content}
+                      </p>
+                    </div>
+                  ) : (
+                    <p style={{ fontSize: '11px' }}>{gameState.target.content || gameState.target}</p>
+                  )}
                 </div>
               )}
             </div>

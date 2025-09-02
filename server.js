@@ -4,6 +4,7 @@ const socketIo = require('socket.io');
 const cors = require('cors');
 const path = require('path');
 const os = require('os');
+const fs = require('fs');
 const OpenAI = require('openai');
 require('dotenv').config();
 
@@ -19,6 +20,36 @@ const io = socketIo(server, {
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'client/build')));
+// Serve challenge images
+app.use('/api/images', express.static(path.join(__dirname, 'images')));
+
+// Get available challenge images
+app.get('/api/challenge-images', (req, res) => {
+  const imagesDir = path.join(__dirname, 'images');
+  const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
+  
+  try {
+    if (!fs.existsSync(imagesDir)) {
+      return res.json({ images: [] });
+    }
+    
+    const files = fs.readdirSync(imagesDir)
+      .filter(file => {
+        const ext = path.extname(file).toLowerCase();
+        return imageExtensions.includes(ext);
+      })
+      .map(filename => ({
+        filename,
+        url: `/api/images/${filename}`,
+        displayName: filename.replace(/\.[^/.]+$/, "").replace(/[-_]/g, ' ')
+      }));
+    
+    res.json({ images: files });
+  } catch (error) {
+    console.error('Error reading images directory:', error);
+    res.json({ images: [] });
+  }
+});
 
 // Health check endpoint
 app.get('/api/health', async (req, res) => {
@@ -122,7 +153,12 @@ io.on('connection', (socket) => {
 
   // Admin controls
   socket.on('set-target', (target) => {
-    gameState.target = target;
+    // Handle both old string format and new object format
+    if (typeof target === 'string') {
+      gameState.target = { type: 'text', content: target };
+    } else {
+      gameState.target = target;
+    }
     gameState.phase = 'ready';
     io.emit('game-state', gameState);
   });

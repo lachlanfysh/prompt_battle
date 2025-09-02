@@ -15,17 +15,32 @@ export default function AdminPanel() {
   const [target, setTarget] = useState('');
   const [duration, setDuration] = useState(60);
   const [connected, setConnected] = useState(false);
+  const [challengeImages, setChallengeImages] = useState([]);
+  const [targetType, setTargetType] = useState('text'); // 'text' or 'image'
+  const [selectedImage, setSelectedImage] = useState(null);
 
   const presetTargets = [
-    'A majestic dragon flying over a medieval castle',
-    'A cozy coffee shop in a cyberpunk city',
-    'A peaceful forest scene with magical creatures',
-    'An astronaut exploring an alien planet',
-    'A steampunk airship floating through clouds',
-    'A sunset over a mountain lake',
-    'A bustling medieval marketplace',
-    'A futuristic city with flying cars'
+    'How many consultants does it take to change a lightbulb? Show the meeting where they discuss it',
+    'An AI trying to explain blockchain to confused executives in a boardroom',
+    'A consultant presenting a slide that just says "SYNERGY" with jazz hands',
+    'ChatGPT attending a Zoom call while secretly browsing memes',
+    'A robot consultant charging $500/hour to recommend turning it off and on again',
+    'The moment when AI realizes it\'s been optimizing the wrong KPIs all along',
+    'A consultant\'s powerpoint slide with 47 different frameworks on it',
+    'An AI and a consultant fighting over who can use more buzzwords',
+    'Machine learning model trying to understand why humans need so many meetings',
+    'A consultant explaining digital transformation using only buzzword bingo',
+    'AI trying to automate a process that doesn\'t need to exist',
+    'The facial expression of a consultant when asked to actually implement their recommendations'
   ];
+
+  // Fetch available challenge images
+  useEffect(() => {
+    fetch('/api/challenge-images')
+      .then(res => res.json())
+      .then(data => setChallengeImages(data.images || []))
+      .catch(err => console.error('Failed to fetch challenge images:', err));
+  }, []);
 
   useEffect(() => {
     const socketURL = getSocketURL();
@@ -58,8 +73,17 @@ export default function AdminPanel() {
   }, []);
 
   const setTargetPrompt = () => {
-    if (socket && target.trim()) {
-      socket.emit('set-target', target.trim());
+    if (socket) {
+      if (targetType === 'text' && target.trim()) {
+        socket.emit('set-target', { type: 'text', content: target.trim() });
+      } else if (targetType === 'image' && selectedImage) {
+        socket.emit('set-target', { 
+          type: 'image', 
+          content: `Recreate this image: ${selectedImage.displayName}`,
+          imageUrl: selectedImage.url,
+          imageFilename: selectedImage.filename
+        });
+      }
     }
   };
 
@@ -193,7 +217,21 @@ export default function AdminPanel() {
           {gameState?.target && (
             <div className="mt-4 p-4 bg-gray-700 rounded-lg">
               <h3 className="font-semibold mb-2">Current Target:</h3>
-              <p className="text-lg">{gameState.target}</p>
+              {gameState.target.type === 'image' ? (
+                <div className="flex items-center space-x-4">
+                  <img 
+                    src={gameState.target.imageUrl} 
+                    alt="Challenge"
+                    className="w-24 h-24 object-cover rounded"
+                  />
+                  <div>
+                    <p className="text-lg font-medium">{gameState.target.content}</p>
+                    <p className="text-sm text-gray-400">Image Recreation Challenge</p>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-lg">{gameState.target.content || gameState.target}</p>
+              )}
             </div>
           )}
         </div>
@@ -202,38 +240,123 @@ export default function AdminPanel() {
         <div className="bg-gray-800 rounded-lg p-6 mb-8">
           <h2 className="text-xl font-bold mb-4">Set Battle Target</h2>
           
-          <div className="mb-4">
-            <label className="block font-semibold mb-2">Target Prompt:</label>
-            <textarea
-              value={target}
-              onChange={(e) => setTarget(e.target.value)}
-              placeholder="Enter the target for players to create images of..."
-              className="w-full h-24 p-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none"
-              maxLength={200}
-            />
-            <div className="text-right text-sm text-gray-400 mt-1">
-              {target.length}/200 characters
-            </div>
-          </div>
-          
+          {/* Challenge Type Selector */}
           <div className="mb-6">
-            <h3 className="font-semibold mb-3">Quick Presets:</h3>
-            <div className="grid md:grid-cols-2 gap-2">
-              {presetTargets.map((preset, index) => (
-                <button
-                  key={index}
-                  onClick={() => setTarget(preset)}
-                  className="text-left p-3 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition-colors"
-                >
-                  {preset}
-                </button>
-              ))}
+            <label className="block font-semibold mb-3">Challenge Type:</label>
+            <div className="flex space-x-4">
+              <button
+                onClick={() => setTargetType('text')}
+                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                  targetType === 'text' 
+                    ? 'bg-blue-600 text-white' 
+                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                }`}
+              >
+                Text Prompt
+              </button>
+              <button
+                onClick={() => setTargetType('image')}
+                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                  targetType === 'image' 
+                    ? 'bg-blue-600 text-white' 
+                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                }`}
+              >
+                Image Recreation
+              </button>
             </div>
           </div>
+
+          {targetType === 'text' ? (
+            <>
+              <div className="mb-4">
+                <label className="block font-semibold mb-2">Target Prompt:</label>
+                <textarea
+                  value={target}
+                  onChange={(e) => setTarget(e.target.value)}
+                  placeholder="Enter the target for players to create images of..."
+                  className="w-full h-24 p-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none"
+                  maxLength={200}
+                />
+                <div className="text-right text-sm text-gray-400 mt-1">
+                  {target.length}/200 characters
+                </div>
+              </div>
+              
+              <div className="mb-6">
+                <h3 className="font-semibold mb-3">Quick Presets:</h3>
+                <div className="grid md:grid-cols-2 gap-2">
+                  {presetTargets.map((preset, index) => (
+                    <button
+                      key={index}
+                      onClick={() => setTarget(preset)}
+                      className="text-left p-3 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition-colors"
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="mb-6">
+                <label className="block font-semibold mb-3">Choose Challenge Image:</label>
+                {challengeImages.length === 0 ? (
+                  <p className="text-gray-400">No challenge images found. Add images to the /images folder.</p>
+                ) : (
+                  <div className="grid md:grid-cols-3 lg:grid-cols-4 gap-4">
+                    {challengeImages.map((image, index) => (
+                      <div key={index} className="relative">
+                        <button
+                          onClick={() => setSelectedImage(image)}
+                          className={`w-full p-2 rounded-lg border-2 transition-colors ${
+                            selectedImage?.filename === image.filename
+                              ? 'border-blue-500 bg-blue-900/20'
+                              : 'border-gray-600 hover:border-gray-500 bg-gray-700'
+                          }`}
+                        >
+                          <img 
+                            src={image.url} 
+                            alt={image.displayName}
+                            className="w-full h-24 object-cover rounded mb-2"
+                          />
+                          <p className="text-xs text-gray-300 truncate">
+                            {image.displayName}
+                          </p>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              
+              {selectedImage && (
+                <div className="mb-4 p-4 bg-gray-700 rounded-lg">
+                  <h3 className="font-semibold mb-2">Selected Image:</h3>
+                  <div className="flex items-center space-x-4">
+                    <img 
+                      src={selectedImage.url} 
+                      alt={selectedImage.displayName}
+                      className="w-24 h-24 object-cover rounded"
+                    />
+                    <div>
+                      <p className="font-medium">{selectedImage.displayName}</p>
+                      <p className="text-sm text-gray-400">Players will try to recreate this image</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
           
           <button
             onClick={setTargetPrompt}
-            disabled={!target.trim() || !connected}
+            disabled={
+              !connected || 
+              (targetType === 'text' && !target.trim()) ||
+              (targetType === 'image' && !selectedImage)
+            }
             className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white font-bold py-2 px-6 rounded-lg transition-colors"
           >
             Set Target
