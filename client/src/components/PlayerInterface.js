@@ -50,6 +50,12 @@ export default function PlayerInterface({ playerId }) {
       setTimer(timeLeft);
     });
 
+    newSocket.on('game-reset', () => {
+      console.log('Game reset received, clearing local state');
+      setPrompt(''); // Clear the prompt input
+      setTimer(0);
+    });
+
     newSocket.on('connect_error', (err) => {
       console.error('Connection error:', err);
       setError('Failed to connect to server');

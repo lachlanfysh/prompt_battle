@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Prompt Battle Complete Setup Script
-# This script installs Stable Diffusion and starts your prompt battle app
+# This script sets up dependencies and starts your prompt battle app with OpenAI DALL-E
 
 set -e  # Exit on any error
 
@@ -32,25 +32,36 @@ if [ ! -f "package.json" ]; then
     exit 1
 fi
 
-# Check for Stable Diffusion installation
-SD_DIR="$HOME/stable-diffusion-webui"
-SD_LAUNCH_SCRIPT="$SD_DIR/launch_api.sh"
+# Check for OpenAI API Key
+if [ ! -f ".env" ]; then
+    echo "📝 Creating .env file..."
+    cat > .env << EOF
+# OpenAI API Configuration
+OPENAI_API_KEY=your_openai_api_key_here
 
-if [ ! -f "$SD_LAUNCH_SCRIPT" ]; then
-    echo "🤖 Stable Diffusion not found. Installing automatically..."
-    echo "⏳ This will download ~4GB and may take 10-15 minutes..."
+# Server Configuration
+PORT=3001
+NODE_ENV=development
+
+# Optional: DALL-E model settings
+# DALLE_MODEL=dall-e-3
+# DALLE_SIZE=1024x1024
+# DALLE_QUALITY=standard
+EOF
+fi
+
+if ! grep -q "^OPENAI_API_KEY=sk-" .env 2>/dev/null; then
+    echo "⚠️  OpenAI API key not configured!"
+    echo "📝 Please edit .env file and add your API key:"
+    echo "   OPENAI_API_KEY=sk-your-actual-key-here"
     echo ""
-    read -p "Continue with Stable Diffusion installation? (y/N): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        ./install-stable-diffusion.sh
-    else
-        echo "⚠️  Skipping Stable Diffusion. App will use placeholder images."
-        SD_AVAILABLE=false
-    fi
+    echo "🔑 Get your API key at: https://platform.openai.com/api-keys"
+    echo "💡 The app will use placeholder images without a valid API key."
+    echo ""
+    API_CONFIGURED=false
 else
-    echo "✅ Stable Diffusion found at: $SD_DIR"
-    SD_AVAILABLE=true
+    echo "✅ OpenAI API key found in .env"
+    API_CONFIGURED=true
 fi
 
 # Install Node.js dependencies
@@ -99,36 +110,14 @@ wait_for_service() {
     fi
 }
 
-# Start Stable Diffusion if available
-if [ "$SD_AVAILABLE" = true ]; then
+# Check OpenAI API connection if configured
+if [ "$API_CONFIGURED" = true ]; then
     echo ""
-    echo "🤖 Starting Stable Diffusion WebUI..."
-    echo "📍 Location: $SD_DIR"
-    echo "🌐 Will be available at: http://localhost:7860"
-    echo ""
-    
-    # Kill any existing SD process
-    if check_port 7860; then
-        echo "🔄 Port 7860 is busy. Attempting to free it..."
-        pkill -f "python.*launch.py" || true
-        sleep 3
-    fi
-    
-    # Start SD in background
-    cd "$SD_DIR"
-    nohup ./launch_api.sh > sd_output.log 2>&1 &
-    SD_PID=$!
-    echo "🚀 Stable Diffusion started with PID: $SD_PID"
-    cd - > /dev/null
-    
-    # Wait for SD to be ready
-    if wait_for_service 7860 "Stable Diffusion"; then
-        echo "🎨 Stable Diffusion API ready!"
-    else
-        echo "⚠️  Stable Diffusion may still be starting. Check logs: tail -f $SD_DIR/sd_output.log"
-    fi
+    echo "🤖 Testing OpenAI API connection..."
+    # We'll test this when the server starts
+    echo "✅ API key configured - will test connection when server starts"
 else
-    echo "⚠️  Stable Diffusion not available. Using placeholder images."
+    echo "⚠️  OpenAI API not configured. Using placeholder images."
 fi
 
 echo ""
@@ -151,11 +140,11 @@ echo "   3. Share this IP ($LOCAL_IP) with players"
 echo "   4. Players connect to the same hotspot and visit the URLs above"
 echo ""
 
-if [ "$SD_AVAILABLE" = true ]; then
-    echo "🎯 Stable Diffusion Status:"
-    echo "   🌐 WebUI: http://localhost:7860"
-    echo "   📊 API Docs: http://localhost:7860/docs"
-    echo "   📝 Logs: tail -f $SD_DIR/sd_output.log"
+if [ "$API_CONFIGURED" = true ]; then
+    echo "🎯 OpenAI DALL-E Status:"
+    echo "   🎨 Model: DALL-E 3 (1024x1024)"
+    echo "   💰 Cost: ~$0.040 per image"
+    echo "   📊 Usage: https://platform.openai.com/usage"
     echo ""
 fi
 
@@ -166,11 +155,7 @@ echo ""
 cleanup() {
     echo ""
     echo "🛑 Shutting down services..."
-    if [ ! -z "$SD_PID" ]; then
-        echo "Stopping Stable Diffusion (PID: $SD_PID)..."
-        kill $SD_PID 2>/dev/null || true
-    fi
-    pkill -f "python.*launch.py" 2>/dev/null || true
+    echo "Stopping Prompt Battle server..."
     exit 0
 }
 

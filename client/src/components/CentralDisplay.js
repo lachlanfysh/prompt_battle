@@ -86,6 +86,14 @@ export default function CentralDisplay() {
       console.log('Winner selected:', winnerId);
     });
 
+    newSocket.on('game-reset', () => {
+      console.log('Game reset received, clearing display state');
+      setPrompts({});
+      setImages({});
+      setTimer(0);
+      setHasGeneratedNextPlayer(false); // Reset QR generation flag
+    });
+
     setSocket(newSocket);
 
     return () => {

@@ -11,17 +11,17 @@ ipconfig getifaddr en0
 sudo pfctl -f /etc/pf.conf
 ```
 
-### 2. Stable Diffusion Not Working
+### 2. OpenAI API Not Working
 ```bash
-# Check if SD is running
-curl http://localhost:7860/internal/ping
+# Test API connection
+curl -H "Authorization: Bearer $OPENAI_API_KEY" \
+  https://api.openai.com/v1/models
 
-# View SD logs
-tail -f ~/stable-diffusion-webui/sd_output.log
+# Check API health via app
+curl http://localhost:3001/api/health
 
-# Restart SD manually
-cd ~/stable-diffusion-webui
-./launch_api.sh
+# Verify environment variables
+cat .env | grep OPENAI_API_KEY
 ```
 
 ### 3. Server Won't Start
@@ -42,7 +42,6 @@ pkill python
 ### "Permission Denied" Errors
 ```bash
 chmod +x start.sh
-chmod +x install-stable-diffusion.sh
 ```
 
 ### Homebrew Not Found (Apple Silicon)
@@ -60,9 +59,10 @@ brew install python@3.10
 ```
 
 ### Out of Memory Errors
-Edit `~/stable-diffusion-webui/launch_api.sh` and add:
+For Node.js memory issues:
 ```bash
-python launch.py --api --listen --port 7860 --lowvram --precision full
+export NODE_OPTIONS="--max-old-space-size=4096"
+npm start
 ```
 
 ## Health Checks
@@ -75,8 +75,9 @@ Visit: `http://localhost:3001/api/health`
 # Game Server
 curl http://localhost:3001/api/health
 
-# Stable Diffusion
-curl http://localhost:7860/internal/ping
+# OpenAI API
+curl -H "Authorization: Bearer $OPENAI_API_KEY" \
+  https://api.openai.com/v1/models
 
 # Web Interface
 curl -I http://localhost:3001
@@ -111,22 +112,20 @@ sudo pfctl -d
 ## Performance Issues
 
 ### Slow Image Generation
-1. Reduce steps in `server.js` (line ~247):
+1. Use standard quality instead of HD in `server.js`:
    ```javascript
-   steps: 10,  // Instead of 20
+   quality: "standard",  // Instead of "hd"
    ```
 
-2. Use smaller images:
+2. Use DALL-E 2 for faster generation:
    ```javascript
-   width: 512,   // Instead of 1024
-   height: 512,  // Instead of 1024
+   model: "dall-e-2",     // Instead of "dall-e-3"
+   size: "512x512",       // Smaller, faster
    ```
 
-3. Enable low VRAM mode:
-   ```bash
-   cd ~/stable-diffusion-webui
-   ./launch_api.sh --lowvram
-   ```
+3. Monitor API rate limits:
+   - DALL-E 3: 5 images/minute
+   - DALL-E 2: 50 images/minute
 
 ### Browser Connection Issues
 - Clear browser cache
@@ -138,7 +137,7 @@ sudo pfctl -d
 
 ### Log Locations
 - Game Server: Terminal output
-- Stable Diffusion: `~/stable-diffusion-webui/sd_output.log`
+- OpenAI API: Check API usage at https://platform.openai.com/usage
 - Browser: Developer Tools > Console
 
 ### Useful Commands
@@ -157,10 +156,8 @@ df -h
 ```bash
 # Kill all processes
 pkill node
-pkill python
 
-# Remove installations (nuclear option)
-rm -rf ~/stable-diffusion-webui
+# Remove node modules (nuclear option)
 rm -rf node_modules
 rm -rf client/node_modules
 

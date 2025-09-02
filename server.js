@@ -132,6 +132,7 @@ io.on('connection', (socket) => {
     gameState.timer = duration;
     gameState.prompts = {};
     gameState.generatedImages = {};
+    gameState.winner = null; // Clear previous winner
     
     io.emit('battle-started', { duration });
     io.emit('game-state', gameState);
@@ -156,16 +157,25 @@ io.on('connection', (socket) => {
   });
 
   socket.on('reset-game', () => {
+    // Keep connected players but reset their ready status
+    Object.keys(gameState.players).forEach(playerId => {
+      if (gameState.players[playerId]) {
+        gameState.players[playerId].ready = false;
+      }
+    });
+    
     gameState = {
+      ...gameState,
       phase: 'waiting',
-      players: {},
       prompts: {},
       generatedImages: {},
       target: null,
       timer: 0,
       winner: null
     };
+    
     io.emit('game-state', gameState);
+    io.emit('game-reset'); // New event to signal complete reset
   });
 
   // Handle disconnection

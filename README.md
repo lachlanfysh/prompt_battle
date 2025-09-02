@@ -1,6 +1,6 @@
 # 🎨 Prompt Battle - Local Multiplayer Image Generation Game
 
-A real-time multiplayer prompt battle application where players compete to write the best image generation prompts. Designed for local hosting with hotspot connectivity and local Stable Diffusion integration.
+A real-time multiplayer prompt battle application where players compete to write the best image generation prompts. Designed for local hosting with hotspot connectivity and OpenAI DALL-E integration.
 
 ## 🚀 Quick Start
 
@@ -9,9 +9,9 @@ A real-time multiplayer prompt battle application where players compete to write
    ./start.sh
    ```
 
-2. **Set up Stable Diffusion** (optional but recommended):
-   - See `stable-diffusion-setup.md` for detailed instructions
-   - Quick version: Install Automatic1111 WebUI and run with `--api --listen` flags
+2. **Set up OpenAI API Key**:
+   - Get your API key from https://platform.openai.com/api-keys
+   - Add it to your `.env` file: `OPENAI_API_KEY=your_api_key_here`
 
 3. **Access the game:**
    - **Admin Panel**: `http://your-ip:3001/admin`
@@ -71,22 +71,28 @@ npm start
 Create a `.env` file:
 ```env
 PORT=3001
-SD_API_URL=http://localhost:7860
+OPENAI_API_KEY=your_openai_api_key_here
 NODE_ENV=production
+
+# Optional: DALL-E model settings
+DALLE_MODEL=dall-e-3
+DALLE_SIZE=1024x1024
+DALLE_QUALITY=standard
 ```
 
 ## 🖼️ Image Generation
 
-The app supports multiple image generation backends:
+The app uses OpenAI's DALL-E 3 for high-quality image generation:
 
-### Local Stable Diffusion (Recommended)
-- **Automatic1111 WebUI**: Full control, best quality
-- **Draw Things**: Mac App Store, easier setup
-- **DiffusionBee**: Free Mac app
+### OpenAI DALL-E 3 (Primary)
+- **High Quality**: Professional-grade image generation
+- **Fast Generation**: Typically 10-20 seconds per image
+- **Creative Flexibility**: Excellent prompt interpretation
+- **API Integration**: Reliable cloud-based service
 
 ### Fallback Options
-- If Stable Diffusion is unavailable, shows placeholder images
-- Easy to extend with other APIs (OpenAI DALL-E, Midjourney, etc.)
+- If OpenAI API is unavailable, shows placeholder images with prompt text
+- Easy to extend with other APIs (Midjourney, Stable Diffusion, etc.)
 
 ## 🌐 Network Configuration
 
@@ -120,7 +126,7 @@ prompt_battle/
 │   │   │   └── AdminPanel.js         # Game control
 │   │   └── ...
 ├── start.sh              # Quick setup script
-├── stable-diffusion-setup.md  # SD installation guide
+├── .env                  # Environment variables (API keys)
 └── README.md
 ```
 
@@ -147,13 +153,13 @@ const presetTargets = [
 ### Changing Image Generation Settings
 Modify the `generateImage` function in `server.js`:
 ```javascript
-const response = await axios.post(`${STABLE_DIFFUSION_URL}/sdapi/v1/txt2img`, {
+const response = await openai.images.generate({
+  model: "dall-e-3",     // or "dall-e-2"
   prompt: prompt,
-  steps: 20,        // Adjust quality vs speed
-  width: 1024,      // Image dimensions
-  height: 1024,
-  cfg_scale: 7,     // Prompt adherence
-  // ... other settings
+  n: 1,                  // Number of images
+  size: "1024x1024",     // or "1792x1024", "1024x1792"
+  quality: "standard",   // or "hd"
+  style: "vivid"        // or "natural"
 });
 ```
 
@@ -164,15 +170,17 @@ const response = await axios.post(`${STABLE_DIFFUSION_URL}/sdapi/v1/txt2img`, {
 - Verify IP address with `ipconfig getifaddr en0`
 - Try restarting the router/hotspot
 
-### Stable Diffusion Issues
-- Ensure WebUI is running on port 7860
-- Check the `--api --listen` flags are used
-- Download a model file to `models/Stable-diffusion/`
+### OpenAI API Issues
+- Verify your API key is correct in the `.env` file
+- Check your OpenAI account has sufficient credits
+- Ensure API key has appropriate permissions
+- Monitor usage at https://platform.openai.com/usage
 
 ### Performance Issues
-- Reduce image generation steps (lower quality, faster)
-- Use smaller image dimensions
-- Ensure stable internet connection
+- Use "standard" quality instead of "hd" for faster generation
+- Use smaller image dimensions (512x512 for DALL-E 2)
+- Ensure stable internet connection for API calls
+- Monitor OpenAI API rate limits
 
 ## 📝 License
 
