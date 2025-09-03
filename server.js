@@ -6,6 +6,7 @@ const path = require('path');
 const os = require('os');
 const fs = require('fs');
 const OpenAI = require('openai');
+const https = require('https');
 require('dotenv').config();
 
 const app = express();
@@ -84,6 +85,13 @@ function getLocalIP() {
 
 const PORT = process.env.PORT || 3001;
 const LOCAL_IP = getLocalIP();
+
+// Ensure output directory exists
+const OUTPUT_DIR = path.join(__dirname, 'generated_images');
+if (!fs.existsSync(OUTPUT_DIR)) {
+  fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+  console.log('Created output directory:', OUTPUT_DIR);
+}
 
 // Initialize OpenAI client
 const openai = new OpenAI({
@@ -244,10 +252,21 @@ async function endBattle() {
       const prompt = gameState.prompts[playerId];
       if (!prompt) return null;
 
-      // This is where you'd integrate with local Stable Diffusion
-      // For now, we'll use a placeholder
       const imageData = await generateImage(prompt);
       gameState.generatedImages[playerId] = imageData;
+      
+      // Save image to file if it's not a fallback
+      if (imageData && imageData.url && !imageData.fallback) {
+        try {
+          const savedPath = await saveImageToFile(imageData.url, prompt, playerId);
+          if (savedPath) {
+            imageData.savedPath = savedPath;
+          }
+        } catch (saveError) {
+          console.error(`Failed to save image for player ${playerId}:`, saveError);
+        }
+      }
+      
       return { playerId, imageData };
     });
 
@@ -324,6 +343,49 @@ async function generateImage(prompt) {
     }
     
     return createFallbackImage(prompt);
+  }
+}
+
+// Function to save image from URL to local file
+async function saveImageToFile(imageUrl, prompt, playerId) {
+  try {
+    // Create safe filename from prompt (remove special chars, limit length)
+    const safePrompt = prompt
+      .replace(/[^a-zA-Z0-9\s-]/g, '') // Remove special chars
+      .replace(/\s+/g, '_') // Replace spaces with underscores
+      .substring(0, 50); // Limit length
+    
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
+    const filename = `player${playerId}_${timestamp}_${safePrompt}.jpg`;
+    const filepath = path.join(OUTPUT_DIR, filename);
+    
+    // Download and save the image
+    const file = fs.createWriteStream(filepath);
+    
+    return new Promise((resolve, reject) => {
+      https.get(imageUrl, (response) => {
+        if (response.statusCode !== 200) {
+          reject(new Error(`Failed to download image: ${response.statusCode}`));
+          return;
+        }
+        
+        response.pipe(file);
+        
+        file.on('finish', () => {
+          file.close();
+          console.log(`💾 Image saved: ${filename}`);
+          resolve(filepath);
+        });
+        
+        file.on('error', (err) => {
+          fs.unlink(filepath, () => {}); // Delete file on error
+          reject(err);
+        });
+      }).on('error', reject);
+    });
+  } catch (error) {
+    console.error('Error saving image:', error);
+    return null;
   }
 }
 

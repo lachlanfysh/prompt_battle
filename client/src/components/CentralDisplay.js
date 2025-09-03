@@ -321,12 +321,12 @@ export default function CentralDisplay() {
                           alt={`Player ${playerId}'s creation`}
                           className="w-full border-2 border-black"
                           style={{
-                            height: '200px',
-                            objectFit: 'cover',
+                            aspectRatio: '1/1',
+                            objectFit: 'contain',
                             boxShadow: '2px 2px 0px #999'
                           }}
                           onError={(e) => {
-                            e.target.src = `https://via.placeholder.com/400x200/f0f0f0/999999.png?text=Image+Error`;
+                            e.target.src = `https://via.placeholder.com/400x400/f0f0f0/999999.png?text=Image+Error`;
                           }}
                         />
                         {imageData.fallback && (
@@ -386,8 +386,8 @@ export default function CentralDisplay() {
                         alt="Winning creation"
                         className="w-full border-4 border-black mb-4"
                         style={{
-                          height: '250px',
-                          objectFit: 'cover',
+                          aspectRatio: '1/1',
+                          objectFit: 'contain',
                           boxShadow: '4px 4px 0px black'
                         }}
                       />
