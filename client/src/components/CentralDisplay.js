@@ -321,7 +321,7 @@ export default function CentralDisplay() {
                           alt={`Player ${playerId}'s creation`}
                           className="w-full border-2 border-black"
                           style={{
-                            aspectRatio: '1/1',
+                            aspectRatio: '1/1', // Fixed aspect ratio to show full square image
                             objectFit: 'contain',
                             boxShadow: '2px 2px 0px #999'
                           }}
