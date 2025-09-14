@@ -21,11 +21,25 @@ export default function AdminPanel() {
   const [randomTopicEnabled, setRandomTopicEnabled] = useState(false);
 
   const presetTargets = [
+    // Corporate & Business Humor (accessible)
+    'How many consultants does it take to change a lightbulb? Show the meeting where they discuss it',
+    'A consultant presenting a slide that just says "SYNERGY" with jazz hands',
+    'The facial expression of a consultant when asked to actually do the work themselves',
+    'A person trying to look busy when their boss walks by',
+    'Someone pretending to take notes but actually drawing doodles of their coworkers',
+    'The look when someone says "let\'s circle back on this" for the 10th time',
+
+    // Tech & Modern Life (relatable)
+    'The moment when someone realizes they\'ve been on mute during an important meeting',
+    'A person trying to explain why their computer works fine at home but breaks at work',
+    'Someone trying to explain cryptocurrency to their pet goldfish',
+    'The expression when your smart TV starts playing ads louder than your show',
+    'A robot trying to understand why humans need coffee to function',
+    'The moment when you accidentally delete something important and panic',
+
     // Everyday Life Humor
     'The face you make when someone says "we need to talk" via text message',
-    'A person trying to look busy when their boss walks by',
     'The expression when you wave back at someone who was waving at the person behind you',
-    'Someone pretending to understand the plot of a movie they missed the first 30 minutes of',
     'The look when you realize you\'ve been singing the wrong lyrics to a song for years',
     'A person trying to act casual after walking into a glass door',
     'The face when you\'re telling a story and forget the point halfway through',
@@ -49,17 +63,7 @@ export default function AdminPanel() {
     'Two squirrels having a heated debate about the best places to hide nuts',
     'A goldfish with a PhD trying to teach underwater basket weaving',
     'A chicken crossing the road but stopping to ask for directions',
-    'A cow giving a presentation on why the grass really is greener on the other side',
-
-    // Office & Work Life
-    'The moment when someone realizes they\'ve been on mute during an important meeting',
-    'A person trying to look productive while their computer loads for 5 minutes',
-    'The expression when asked to work on something "urgent" that\'s been sitting there for months',
-    'Someone pretending to take notes but actually drawing doodles of their coworkers',
-    'The face when you finally understand a joke told in a meeting 3 hours later',
-    'A person trying to eat lunch quietly while on a video call',
-    'The look when someone says "let\'s circle back on this" for the 10th time',
-    'Someone trying to figure out which elevator button to press in a building they visit daily'
+    'A cow giving a presentation on why the grass really is greener on the other side'
   ];
 
   // Fetch available challenge images
