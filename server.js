@@ -207,7 +207,7 @@ io.on('connection', (socket) => {
         gameState.players[playerId].ready = false;
       }
     });
-    
+
     gameState = {
       ...gameState,
       phase: 'waiting',
@@ -217,9 +217,26 @@ io.on('connection', (socket) => {
       timer: 0,
       winner: null
     };
-    
+
     io.emit('game-state', gameState);
     io.emit('game-reset'); // New event to signal complete reset
+  });
+
+  // GPT-based image scoring
+  socket.on('request-gpt-scoring', async () => {
+    if (gameState.phase !== 'judging' || !gameState.target || Object.keys(gameState.generatedImages).length < 2) {
+      socket.emit('gpt-scoring-error', 'Cannot score images at this time');
+      return;
+    }
+
+    try {
+      console.log('🤖 Starting GPT-based image analysis...');
+      const scoringResult = await analyzeImagesWithGPT(gameState.target, gameState.generatedImages);
+      io.emit('gpt-scoring-result', scoringResult);
+    } catch (error) {
+      console.error('GPT scoring failed:', error);
+      socket.emit('gpt-scoring-error', error.message);
+    }
   });
 
   // Handle disconnection
@@ -410,6 +427,106 @@ function createFallbackImage(prompt) {
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'client/build', 'index.html'));
 });
+
+// GPT-based image analysis function
+async function analyzeImagesWithGPT(target, generatedImages) {
+  const isHealthy = await checkOpenAIHealth();
+
+  if (!isHealthy) {
+    throw new Error('OpenAI API is not available. Please check your API key.');
+  }
+
+  const playerIds = Object.keys(generatedImages);
+  if (playerIds.length !== 2) {
+    throw new Error('Need exactly 2 images to compare');
+  }
+
+  const [player1Id, player2Id] = playerIds;
+  const image1 = generatedImages[player1Id];
+  const image2 = generatedImages[player2Id];
+
+  // Check if images are fallback images (can't analyze those)
+  if (image1.fallback || image2.fallback) {
+    throw new Error('Cannot analyze fallback placeholder images');
+  }
+
+  try {
+    // Determine target content based on type
+    const targetContent = typeof target === 'object' ? target.content : target;
+
+    const analysisPrompt = `I need you to analyze these two AI-generated images and determine which one better fulfills the prompt: "${targetContent}"
+
+Please evaluate based on:
+1. How well each image matches the specific prompt
+2. Creative interpretation and execution
+3. Visual quality and composition
+4. Overall effectiveness in conveying the intended concept
+
+Provide your analysis in this format:
+WINNER: Player [1 or 2]
+ANALYSIS: [Detailed explanation of why this image wins, about 2-3 sentences]
+PLAYER 1: [Brief feedback on Player 1's image strengths/weaknesses]
+PLAYER 2: [Brief feedback on Player 2's image strengths/weaknesses]
+
+Be specific about what makes the winning image better suited to the prompt.`;
+
+    console.log('🔍 Sending images to GPT-4 Vision for analysis...');
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4-vision-preview",
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: analysisPrompt },
+            { type: "text", text: "\n\nPlayer 1's image:" },
+            {
+              type: "image_url",
+              image_url: {
+                url: image1.url,
+                detail: "high"
+              }
+            },
+            { type: "text", text: "\n\nPlayer 2's image:" },
+            {
+              type: "image_url",
+              image_url: {
+                url: image2.url,
+                detail: "high"
+              }
+            }
+          ]
+        }
+      ],
+      max_tokens: 500
+    });
+
+    const analysisText = response.choices[0].message.content;
+    console.log('✅ GPT analysis completed');
+
+    // Parse the response
+    const lines = analysisText.split('\n');
+    const winnerLine = lines.find(line => line.startsWith('WINNER:'));
+    const analysisLine = lines.find(line => line.startsWith('ANALYSIS:'));
+    const player1Line = lines.find(line => line.startsWith('PLAYER 1:'));
+    const player2Line = lines.find(line => line.startsWith('PLAYER 2:'));
+
+    const winnerId = winnerLine ? winnerLine.split('Player ')[1]?.split(/[^\d]/)[0] : null;
+
+    return {
+      winner: winnerId || null,
+      analysis: analysisLine ? analysisLine.replace('ANALYSIS:', '').trim() : 'Analysis not available',
+      player1Feedback: player1Line ? player1Line.replace('PLAYER 1:', '').trim() : 'Feedback not available',
+      player2Feedback: player2Line ? player2Line.replace('PLAYER 2:', '').trim() : 'Feedback not available',
+      fullResponse: analysisText,
+      target: targetContent
+    };
+
+  } catch (error) {
+    console.error('Error in GPT analysis:', error);
+    throw new Error(`GPT analysis failed: ${error.message}`);
+  }
+}
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`\n🚀 Prompt Battle Server Running!`);

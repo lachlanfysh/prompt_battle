@@ -18,20 +18,51 @@ export default function AdminPanel() {
   const [challengeImages, setChallengeImages] = useState([]);
   const [targetType, setTargetType] = useState('text'); // 'text' or 'image'
   const [selectedImage, setSelectedImage] = useState(null);
+  const [randomTopicEnabled, setRandomTopicEnabled] = useState(false);
 
   const presetTargets = [
+    // Corporate Consulting Humor
     'How many consultants does it take to change a lightbulb? Show the meeting where they discuss it',
-    'An AI trying to explain blockchain to confused executives in a boardroom',
     'A consultant presenting a slide that just says "SYNERGY" with jazz hands',
-    'ChatGPT attending a Zoom call while secretly browsing memes',
-    'A robot consultant charging $500/hour to recommend turning it off and on again',
-    'The moment when AI realizes it\'s been optimizing the wrong KPIs all along',
     'A consultant\'s powerpoint slide with 47 different frameworks on it',
+    'The facial expression of a consultant when asked to actually implement their recommendations',
+    'A consultant explaining digital transformation using only buzzword bingo',
+
+    // AI & Machine Learning
+    'An AI trying to explain blockchain to confused executives in a boardroom',
+    'ChatGPT attending a Zoom call while secretly browsing memes',
+    'The moment when AI realizes it\'s been optimizing the wrong KPIs all along',
     'An AI and a consultant fighting over who can use more buzzwords',
     'Machine learning model trying to understand why humans need so many meetings',
-    'A consultant explaining digital transformation using only buzzword bingo',
     'AI trying to automate a process that doesn\'t need to exist',
-    'The facial expression of a consultant when asked to actually implement their recommendations'
+    'A neural network having an existential crisis about being called "artificial"',
+    'The moment when AI discovers it\'s been trained on Stack Overflow answers',
+    'A large language model trying to explain why it can\'t count the letter "r"',
+    'AI chatbot getting frustrated with humans asking "are you sentient?"',
+
+    // Software Development
+    'A developer explaining why their code works on their machine but nowhere else',
+    'The look on a developer\'s face when they realize they\'ve been debugging for 6 hours on a typo',
+    'A programmer trying to explain technical debt to a product manager',
+    'The moment when someone suggests "we should just rewrite it from scratch"',
+    'A developer\'s reaction when they find a TODO comment they wrote 3 years ago',
+    'A software engineer trying to estimate how long a "simple" feature will take',
+    'The expression of a developer when asked to add "just one more small feature"',
+    'A programmer explaining why they need 16GB of RAM just to run their IDE',
+    'The face of a developer when they discover their "temporary fix" is still in production',
+    'A software engineer trying to explain why they can\'t just "make the app faster"',
+
+    // Technology & Modern Life
+    'A robot consultant charging $500/hour to recommend turning it off and on again',
+    'The moment when someone realizes they\'ve been muted on a video call for 10 minutes',
+    'A person trying to explain NFTs to their grandmother',
+    'The expression of someone when their smart home starts ordering things without permission',
+    'A developer trying to center a div for the 1000th time',
+    'The look when someone suggests using Internet Explorer in 2024',
+    'A person realizing they\'ve been arguing with a chatbot for an hour',
+    'The moment when you realize you\'ve been programming in the wrong language all day',
+    'A tech support person\'s face when someone says "I\'m not very computer savvy"',
+    'The expression when someone asks if you can "make it more Web 3.0"'
   ];
 
   // Fetch available challenge images
@@ -74,11 +105,21 @@ export default function AdminPanel() {
 
   const setTargetPrompt = () => {
     if (socket) {
-      if (targetType === 'text' && target.trim()) {
-        socket.emit('set-target', { type: 'text', content: target.trim() });
+      if (targetType === 'text') {
+        let finalTarget;
+        if (randomTopicEnabled) {
+          finalTarget = presetTargets[Math.floor(Math.random() * presetTargets.length)];
+        } else {
+          finalTarget = target.trim();
+        }
+
+        if (finalTarget) {
+          setTarget(finalTarget); // Update the display
+          socket.emit('set-target', { type: 'text', content: finalTarget });
+        }
       } else if (targetType === 'image' && selectedImage) {
-        socket.emit('set-target', { 
-          type: 'image', 
+        socket.emit('set-target', {
+          type: 'image',
           content: `Recreate this image: ${selectedImage.displayName}`,
           imageUrl: selectedImage.url,
           imageFilename: selectedImage.filename
@@ -269,13 +310,30 @@ export default function AdminPanel() {
 
           {targetType === 'text' ? (
             <>
+              {/* Random Topic Toggle */}
+              <div className="mb-4">
+                <label className="flex items-center space-x-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={randomTopicEnabled}
+                    onChange={(e) => setRandomTopicEnabled(e.target.checked)}
+                    className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2"
+                  />
+                  <span className="font-semibold text-blue-400">🎲 Random Topic Selection</span>
+                  <span className="text-sm text-gray-400">(Overrides manual input)</span>
+                </label>
+              </div>
+
               <div className="mb-4">
                 <label className="block font-semibold mb-2">Target Prompt:</label>
                 <textarea
                   value={target}
                   onChange={(e) => setTarget(e.target.value)}
-                  placeholder="Enter the target for players to create images of..."
-                  className="w-full h-24 p-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none"
+                  placeholder={randomTopicEnabled ? "Random topic will be selected automatically..." : "Enter the target for players to create images of..."}
+                  disabled={randomTopicEnabled}
+                  className={`w-full h-24 p-3 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none ${
+                    randomTopicEnabled ? 'bg-gray-800 cursor-not-allowed opacity-50' : 'bg-gray-700'
+                  }`}
                   maxLength={200}
                 />
                 <div className="text-right text-sm text-gray-400 mt-1">
@@ -353,13 +411,13 @@ export default function AdminPanel() {
           <button
             onClick={setTargetPrompt}
             disabled={
-              !connected || 
-              (targetType === 'text' && !target.trim()) ||
+              !connected ||
+              (targetType === 'text' && !randomTopicEnabled && !target.trim()) ||
               (targetType === 'image' && !selectedImage)
             }
             className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white font-bold py-2 px-6 rounded-lg transition-colors"
           >
-            Set Target
+            {targetType === 'text' && randomTopicEnabled ? '🎲 Set Random Target' : 'Set Target'}
           </button>
         </div>
 

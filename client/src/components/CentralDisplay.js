@@ -18,6 +18,8 @@ export default function CentralDisplay() {
   const [qrCodes, setQrCodes] = useState({});
   const [nextPlayerNumber, setNextPlayerNumber] = useState(3);
   const [hasGeneratedNextPlayer, setHasGeneratedNextPlayer] = useState(false);
+  const [gptScoring, setGptScoring] = useState(null);
+  const [scoringLoading, setScoringLoading] = useState(false);
   
   // Generate initial QR codes
   useEffect(() => {
@@ -92,6 +94,20 @@ export default function CentralDisplay() {
       setImages({});
       setTimer(0);
       setHasGeneratedNextPlayer(false); // Reset QR generation flag
+      setGptScoring(null);
+      setScoringLoading(false);
+    });
+
+    newSocket.on('gpt-scoring-result', (result) => {
+      console.log('GPT scoring result received:', result);
+      setGptScoring(result);
+      setScoringLoading(false);
+    });
+
+    newSocket.on('gpt-scoring-error', (error) => {
+      console.error('GPT scoring error:', error);
+      setScoringLoading(false);
+      alert(`GPT Scoring Error: ${error}`);
     });
 
     setSocket(newSocket);
@@ -135,6 +151,14 @@ export default function CentralDisplay() {
   const selectWinner = (playerId) => {
     if (socket && gameState?.phase === 'judging') {
       socket.emit('select-winner', playerId);
+    }
+  };
+
+  const requestGptScoring = () => {
+    if (socket && gameState?.phase === 'judging') {
+      setScoringLoading(true);
+      setGptScoring(null);
+      socket.emit('request-gpt-scoring');
     }
   };
 
@@ -305,67 +329,148 @@ export default function CentralDisplay() {
 
             {/* Image Display and Judging */}
             {gameState?.phase === 'judging' && (
-              <div className="grid grid-cols-2 gap-6">
-                {Object.entries(images).map(([playerId, imageData]) => (
-                  <div key={playerId} className="border-2 border-black p-4 bg-white" style={{
+              <>
+                {/* GPT Scoring Button */}
+                <div className="text-center mb-6">
+                  <button
+                    onClick={requestGptScoring}
+                    disabled={scoringLoading}
+                    className="border-2 border-black py-3 px-6 font-bold hover:bg-black hover:text-white disabled:bg-gray-300 disabled:cursor-not-allowed"
+                    style={{
+                      fontFamily: 'Chicago, "SF Pro Display", system-ui, sans-serif',
+                      fontSize: '14px',
+                      boxShadow: '4px 4px 0px #999'
+                    }}
+                  >
+                    {scoringLoading ? '🤖 AI is Analyzing...' : '🤖 Get AI Analysis'}
+                  </button>
+                </div>
+
+                {/* GPT Analysis Results */}
+                {gptScoring && (
+                  <div className="border-2 border-black p-4 mb-6 bg-yellow-50" style={{
                     boxShadow: '4px 4px 0px black'
                   }}>
-                    <h3 className="font-bold mb-4 text-center" style={{ fontSize: '16px' }}>
-                      Player {playerId}
+                    <h3 className="font-bold mb-4 text-center" style={{ fontSize: '18px' }}>
+                      🤖 AI Analysis Results
                     </h3>
-                    
-                    {imageData?.url && (
-                      <div className="mb-4">
-                        <img 
-                          src={imageData.url} 
-                          alt={`Player ${playerId}'s creation`}
-                          className="w-full border-2 border-black"
-                          style={{
-                            aspectRatio: '1/1', // Fixed aspect ratio to show full square image
-                            objectFit: 'contain',
-                            boxShadow: '2px 2px 0px #999'
-                          }}
-                          onError={(e) => {
-                            e.target.src = `https://via.placeholder.com/400x400/f0f0f0/999999.png?text=Image+Error`;
-                          }}
-                        />
-                        {imageData.fallback && (
-                          <p style={{ fontSize: '10px' }} className="mt-2 text-center">
-                            ⚠️ Fallback image (OpenAI unavailable)
-                          </p>
-                        )}
+
+                    {gptScoring.winner && (
+                      <div className="text-center mb-4 p-3 border border-black bg-yellow-100" style={{
+                        boxShadow: 'inset 2px 2px 0px #999'
+                      }}>
+                        <p className="font-bold" style={{ fontSize: '16px' }}>
+                          AI Recommends: Player {gptScoring.winner}
+                        </p>
                       </div>
                     )}
 
-                    <div className="border border-black p-2 mb-4 bg-gray-100 break-words" style={{
+                    <div className="mb-4 p-3 border border-black bg-gray-50" style={{
                       boxShadow: 'inset 1px 1px 0px #999'
                     }}>
-                      <h4 className="font-bold mb-1" style={{ fontSize: '10px' }}>Prompt:</h4>
-                      <p style={{ 
-                        fontSize: '9px', 
-                        fontFamily: 'Chicago, monospace',
-                        wordWrap: 'break-word',
-                        overflowWrap: 'break-word',
-                        whiteSpace: 'pre-wrap'
+                      <h4 className="font-bold mb-2" style={{ fontSize: '12px' }}>Analysis:</h4>
+                      <p style={{
+                        fontSize: '11px',
+                        fontFamily: 'Chicago, "SF Pro Display", system-ui, sans-serif',
+                        wordWrap: 'break-word'
                       }}>
-                        {imageData?.prompt}
+                        {gptScoring.analysis}
                       </p>
                     </div>
 
-                    <button
-                      onClick={() => selectWinner(playerId)}
-                      className="w-full border-2 border-black py-2 px-4 font-bold hover:bg-black hover:text-white"
-                      style={{
-                        fontFamily: 'Chicago, "SF Pro Display", system-ui, sans-serif',
-                        fontSize: '12px',
-                        boxShadow: '2px 2px 0px #999'
-                      }}
-                    >
-                      Choose Winner!
-                    </button>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="p-2 border border-black bg-gray-50" style={{
+                        boxShadow: 'inset 1px 1px 0px #999'
+                      }}>
+                        <h4 className="font-bold mb-1" style={{ fontSize: '10px' }}>Player 1 Feedback:</h4>
+                        <p style={{
+                          fontSize: '9px',
+                          fontFamily: 'Chicago, "SF Pro Display", system-ui, sans-serif'
+                        }}>
+                          {gptScoring.player1Feedback}
+                        </p>
+                      </div>
+
+                      <div className="p-2 border border-black bg-gray-50" style={{
+                        boxShadow: 'inset 1px 1px 0px #999'
+                      }}>
+                        <h4 className="font-bold mb-1" style={{ fontSize: '10px' }}>Player 2 Feedback:</h4>
+                        <p style={{
+                          fontSize: '9px',
+                          fontFamily: 'Chicago, "SF Pro Display", system-ui, sans-serif'
+                        }}>
+                          {gptScoring.player2Feedback}
+                        </p>
+                      </div>
+                    </div>
                   </div>
-                ))}
-              </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-6">
+                  {Object.entries(images).map(([playerId, imageData]) => (
+                    <div key={playerId} className="border-2 border-black p-4 bg-white" style={{
+                      boxShadow: '4px 4px 0px black'
+                    }}>
+                      <h3 className="font-bold mb-4 text-center" style={{ fontSize: '16px' }}>
+                        Player {playerId}
+                        {gptScoring?.winner === playerId && (
+                          <span className="ml-2 text-yellow-600">👑 AI Pick</span>
+                        )}
+                      </h3>
+
+                      {imageData?.url && (
+                        <div className="mb-4">
+                          <img
+                            src={imageData.url}
+                            alt={`Player ${playerId}'s creation`}
+                            className="w-full border-2 border-black"
+                            style={{
+                              aspectRatio: '1/1', // Fixed aspect ratio to show full square image
+                              objectFit: 'contain',
+                              boxShadow: '2px 2px 0px #999'
+                            }}
+                            onError={(e) => {
+                              e.target.src = `https://via.placeholder.com/400x400/f0f0f0/999999.png?text=Image+Error`;
+                            }}
+                          />
+                          {imageData.fallback && (
+                            <p style={{ fontSize: '10px' }} className="mt-2 text-center">
+                              ⚠️ Fallback image (OpenAI unavailable)
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="border border-black p-2 mb-4 bg-gray-100 break-words" style={{
+                        boxShadow: 'inset 1px 1px 0px #999'
+                      }}>
+                        <h4 className="font-bold mb-1" style={{ fontSize: '10px' }}>Prompt:</h4>
+                        <p style={{
+                          fontSize: '9px',
+                          fontFamily: 'Chicago, monospace',
+                          wordWrap: 'break-word',
+                          overflowWrap: 'break-word',
+                          whiteSpace: 'pre-wrap'
+                        }}>
+                          {imageData?.prompt}
+                        </p>
+                      </div>
+
+                      <button
+                        onClick={() => selectWinner(playerId)}
+                        className="w-full border-2 border-black py-2 px-4 font-bold hover:bg-black hover:text-white"
+                        style={{
+                          fontFamily: 'Chicago, "SF Pro Display", system-ui, sans-serif',
+                          fontSize: '12px',
+                          boxShadow: '2px 2px 0px #999'
+                        }}
+                      >
+                        Choose Winner!
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </>
             )}
 
             {/* Winner Celebration */}
