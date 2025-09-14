@@ -3,13 +3,13 @@ nixPkgs = ['nodejs', 'npm']
 
 [phases.install]
 cmds = [
-  'npm install',
-  'cd client && npm install'
+  'npm install --production=false',
+  'cd client && npm install --production=false'
 ]
 
 [phases.build]
 cmds = [
-  'cd client && npm run build'
+  'npm run build'
 ]
 
 [start]
