@@ -473,7 +473,7 @@ Be specific about what makes the winning image better suited to the prompt.`;
     console.log('🔍 Sending images to GPT-4 Vision for analysis...');
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4-vision-preview",
+      model: "gpt-4o",
       messages: [
         {
           role: "user",
