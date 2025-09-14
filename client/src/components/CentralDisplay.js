@@ -250,7 +250,7 @@ export default function CentralDisplay() {
           <div className="p-4">
             {/* Game Status Header */}
             <div className="text-center mb-6">
-              <h1 className="text-2xl font-bold mb-2" style={{ fontSize: '24px' }}>
+              <h1 className="text-2xl font-bold mb-2" style={{ fontSize: '36px' }}>
                 {getPhaseTitle()}
               </h1>
               
@@ -258,7 +258,7 @@ export default function CentralDisplay() {
                 <div className="border border-black p-4 mb-4 bg-gray-100" style={{
                   boxShadow: 'inset 2px 2px 0px #999'
                 }}>
-                  <h2 className="font-bold mb-2" style={{ fontSize: '14px' }}>TARGET:</h2>
+                  <h2 className="font-bold mb-2" style={{ fontSize: '20px' }}>TARGET:</h2>
                   {gameState.target.type === 'image' ? (
                     <div className="flex flex-col items-center space-y-3">
                       <img 
@@ -266,12 +266,12 @@ export default function CentralDisplay() {
                         alt="Challenge"
                         className="max-w-full max-h-72 object-contain border-2 border-gray-400"
                       />
-                      <p style={{ fontSize: '12px' }} className="text-center font-medium">
+                      <p style={{ fontSize: '18px' }} className="text-center font-medium">
                         {gameState.target.content}
                       </p>
                     </div>
                   ) : (
-                    <p style={{ fontSize: '12px' }}>{gameState.target.content || gameState.target}</p>
+                    <p style={{ fontSize: '18px' }}>{gameState.target.content || gameState.target}</p>
                   )}
                 </div>
               )}
@@ -285,13 +285,13 @@ export default function CentralDisplay() {
                     <div key={playerId} className="border-2 border-black p-3 bg-white" style={{
                       boxShadow: '2px 2px 0px #999'
                     }}>
-                      <h3 className="font-bold mb-2 text-center" style={{ fontSize: '14px' }}>
+                      <h3 className="font-bold mb-2 text-center" style={{ fontSize: '20px' }}>
                         Player {playerId}
                       </h3>
                       <div className="border border-black p-2 min-h-24 bg-gray-50 break-words whitespace-pre-wrap" style={{
                         boxShadow: 'inset 1px 1px 0px #999',
                         fontFamily: 'Chicago, monospace',
-                        fontSize: '10px',
+                        fontSize: '14px',
                         wordWrap: 'break-word',
                         overflowWrap: 'break-word'
                       }}>
@@ -308,7 +308,7 @@ export default function CentralDisplay() {
                     boxShadow: '4px 4px 0px black'
                   }}>
                     <div className={`font-bold font-mono ${timer <= 10 ? 'animate-pulse text-red-600' : 'text-black'}`} style={{
-                      fontSize: '48px',
+                      fontSize: '72px',
                       fontFamily: 'Chicago, "SF Pro Display", system-ui, monospace'
                     }}>
                       {formatTime(timer)}
@@ -322,8 +322,8 @@ export default function CentralDisplay() {
             {gameState?.phase === 'generating' && (
               <div className="text-center">
                 <div className="text-6xl mb-4">⏳</div>
-                <p style={{ fontSize: '16px' }}>Creating images...</p>
-                <p style={{ fontSize: '12px' }} className="mt-2">This may take a moment</p>
+                <p style={{ fontSize: '24px' }}>Creating images...</p>
+                <p style={{ fontSize: '18px' }} className="mt-2">This may take a moment</p>
               </div>
             )}
 
@@ -338,7 +338,7 @@ export default function CentralDisplay() {
                     className="border-2 border-black py-3 px-6 font-bold hover:bg-black hover:text-white disabled:bg-gray-300 disabled:cursor-not-allowed"
                     style={{
                       fontFamily: 'Chicago, "SF Pro Display", system-ui, sans-serif',
-                      fontSize: '14px',
+                      fontSize: '18px',
                       boxShadow: '4px 4px 0px #999'
                     }}
                   >
@@ -351,7 +351,7 @@ export default function CentralDisplay() {
                   <div className="border-2 border-black p-4 mb-6 bg-yellow-50" style={{
                     boxShadow: '4px 4px 0px black'
                   }}>
-                    <h3 className="font-bold mb-4 text-center" style={{ fontSize: '18px' }}>
+                    <h3 className="font-bold mb-4 text-center" style={{ fontSize: '24px' }}>
                       🤖 AI Analysis Results
                     </h3>
 
@@ -359,7 +359,7 @@ export default function CentralDisplay() {
                       <div className="text-center mb-4 p-3 border border-black bg-yellow-100" style={{
                         boxShadow: 'inset 2px 2px 0px #999'
                       }}>
-                        <p className="font-bold" style={{ fontSize: '16px' }}>
+                        <p className="font-bold" style={{ fontSize: '20px' }}>
                           AI Recommends: Player {gptScoring.winner}
                         </p>
                       </div>
@@ -368,9 +368,9 @@ export default function CentralDisplay() {
                     <div className="mb-4 p-3 border border-black bg-gray-50" style={{
                       boxShadow: 'inset 1px 1px 0px #999'
                     }}>
-                      <h4 className="font-bold mb-2" style={{ fontSize: '12px' }}>Analysis:</h4>
+                      <h4 className="font-bold mb-2" style={{ fontSize: '16px' }}>Analysis:</h4>
                       <p style={{
-                        fontSize: '11px',
+                        fontSize: '14px',
                         fontFamily: 'Chicago, "SF Pro Display", system-ui, sans-serif',
                         wordWrap: 'break-word'
                       }}>
@@ -382,9 +382,9 @@ export default function CentralDisplay() {
                       <div className="p-2 border border-black bg-gray-50" style={{
                         boxShadow: 'inset 1px 1px 0px #999'
                       }}>
-                        <h4 className="font-bold mb-1" style={{ fontSize: '10px' }}>Player 1 Feedback:</h4>
+                        <h4 className="font-bold mb-1" style={{ fontSize: '14px' }}>Player 1 Feedback:</h4>
                         <p style={{
-                          fontSize: '9px',
+                          fontSize: '12px',
                           fontFamily: 'Chicago, "SF Pro Display", system-ui, sans-serif'
                         }}>
                           {gptScoring.player1Feedback}
@@ -394,9 +394,9 @@ export default function CentralDisplay() {
                       <div className="p-2 border border-black bg-gray-50" style={{
                         boxShadow: 'inset 1px 1px 0px #999'
                       }}>
-                        <h4 className="font-bold mb-1" style={{ fontSize: '10px' }}>Player 2 Feedback:</h4>
+                        <h4 className="font-bold mb-1" style={{ fontSize: '14px' }}>Player 2 Feedback:</h4>
                         <p style={{
-                          fontSize: '9px',
+                          fontSize: '12px',
                           fontFamily: 'Chicago, "SF Pro Display", system-ui, sans-serif'
                         }}>
                           {gptScoring.player2Feedback}
@@ -411,7 +411,7 @@ export default function CentralDisplay() {
                     <div key={playerId} className="border-2 border-black p-4 bg-white" style={{
                       boxShadow: '4px 4px 0px black'
                     }}>
-                      <h3 className="font-bold mb-4 text-center" style={{ fontSize: '16px' }}>
+                      <h3 className="font-bold mb-4 text-center" style={{ fontSize: '20px' }}>
                         Player {playerId}
                         {gptScoring?.winner === playerId && (
                           <span className="ml-2 text-yellow-600">👑 AI Pick</span>
@@ -444,9 +444,9 @@ export default function CentralDisplay() {
                       <div className="border border-black p-2 mb-4 bg-gray-100 break-words" style={{
                         boxShadow: 'inset 1px 1px 0px #999'
                       }}>
-                        <h4 className="font-bold mb-1" style={{ fontSize: '10px' }}>Prompt:</h4>
+                        <h4 className="font-bold mb-1" style={{ fontSize: '14px' }}>Prompt:</h4>
                         <p style={{
-                          fontSize: '9px',
+                          fontSize: '12px',
                           fontFamily: 'Chicago, monospace',
                           wordWrap: 'break-word',
                           overflowWrap: 'break-word',
@@ -461,7 +461,7 @@ export default function CentralDisplay() {
                         className="w-full border-2 border-black py-2 px-4 font-bold hover:bg-black hover:text-white"
                         style={{
                           fontFamily: 'Chicago, "SF Pro Display", system-ui, sans-serif',
-                          fontSize: '12px',
+                          fontSize: '16px',
                           boxShadow: '2px 2px 0px #999'
                         }}
                       >
@@ -569,14 +569,14 @@ export default function CentralDisplay() {
             {(!gameState || gameState.phase === 'waiting') && (
               <div className="text-center">
                 <div className="text-6xl mb-8">⏳</div>
-                <p style={{ fontSize: '18px' }} className="mb-8">Scan QR codes to join the battle!</p>
+                <p style={{ fontSize: '24px' }} className="mb-8">Scan QR codes to join the battle!</p>
                 
                 <div className="grid grid-cols-2 gap-8 max-w-2xl mx-auto">
                   {[1, 2].map(playerId => (
                     <div key={playerId} className="border-2 border-black p-6 bg-white" style={{
                       boxShadow: '4px 4px 0px #999'
                     }}>
-                      <h3 className="font-bold mb-4" style={{ fontSize: '18px' }}>
+                      <h3 className="font-bold mb-4" style={{ fontSize: '24px' }}>
                         Player {playerId}
                       </h3>
                       
@@ -607,7 +607,7 @@ export default function CentralDisplay() {
                       </div>
                       
                       <div className="mb-3">
-                        <p style={{ fontSize: '14px' }} className="font-bold">
+                        <p style={{ fontSize: '18px' }} className="font-bold">
                           Status: {gameState?.players?.[playerId]?.connected ? '✓ Connected' : '○ Waiting...'}
                         </p>
                       </div>
