@@ -21,48 +21,45 @@ export default function AdminPanel() {
   const [randomTopicEnabled, setRandomTopicEnabled] = useState(false);
 
   const presetTargets = [
-    // Corporate Consulting Humor
-    'How many consultants does it take to change a lightbulb? Show the meeting where they discuss it',
-    'A consultant presenting a slide that just says "SYNERGY" with jazz hands',
-    'A consultant\'s powerpoint slide with 47 different frameworks on it',
-    'The facial expression of a consultant when asked to actually implement their recommendations',
-    'A consultant explaining digital transformation using only buzzword bingo',
+    // Everyday Life Humor
+    'The face you make when someone says "we need to talk" via text message',
+    'A person trying to look busy when their boss walks by',
+    'The expression when you wave back at someone who was waving at the person behind you',
+    'Someone pretending to understand the plot of a movie they missed the first 30 minutes of',
+    'The look when you realize you\'ve been singing the wrong lyrics to a song for years',
+    'A person trying to act casual after walking into a glass door',
+    'The face when you\'re telling a story and forget the point halfway through',
+    'Someone trying to open a door that says "push" while pulling with all their might',
 
-    // AI & Machine Learning
-    'An AI trying to explain blockchain to confused executives in a boardroom',
-    'ChatGPT attending a Zoom call while secretly browsing memes',
-    'The moment when AI realizes it\'s been optimizing the wrong KPIs all along',
-    'An AI and a consultant fighting over who can use more buzzwords',
-    'Machine learning model trying to understand why humans need so many meetings',
-    'AI trying to automate a process that doesn\'t need to exist',
-    'A neural network having an existential crisis about being called "artificial"',
-    'The moment when AI discovers it\'s been trained on Stack Overflow answers',
-    'A large language model trying to explain why it can\'t count the letter "r"',
-    'AI chatbot getting frustrated with humans asking "are you sentient?"',
+    // Fantastical & Whimsical Scenes
+    'A dragon attending a job interview for a position as a professional campfire starter',
+    'A unicorn trying to use a smartphone with its horn getting in the way',
+    'A wizard attempting to order coffee but accidentally turning the barista into a frog',
+    'A superhero whose only power is finding lost TV remotes',
+    'A time traveler from the past confused by automatic sliding doors',
+    'A genie granting wishes but only for really mundane things like perfectly ripe avocados',
+    'A ghost trying to use a computer but their hands keep going through the keyboard',
+    'A vampire confused by modern fashion trends',
 
-    // Software Development
-    'A developer explaining why their code works on their machine but nowhere else',
-    'The look on a developer\'s face when they realize they\'ve been debugging for 6 hours on a typo',
-    'A programmer trying to explain technical debt to a product manager',
-    'The moment when someone suggests "we should just rewrite it from scratch"',
-    'A developer\'s reaction when they find a TODO comment they wrote 3 years ago',
-    'A software engineer trying to estimate how long a "simple" feature will take',
-    'The expression of a developer when asked to add "just one more small feature"',
-    'A programmer explaining why they need 16GB of RAM just to run their IDE',
-    'The face of a developer when they discover their "temporary fix" is still in production',
-    'A software engineer trying to explain why they can\'t just "make the app faster"',
+    // Animal Scenarios
+    'A cat explaining to dogs why knocking things off tables is actually very important',
+    'A group of penguins holding a serious business meeting about fish market prices',
+    'A sloth giving a motivational speech about the importance of speed',
+    'A hamster running on a wheel while explaining their fitness routine',
+    'Two squirrels having a heated debate about the best places to hide nuts',
+    'A goldfish with a PhD trying to teach underwater basket weaving',
+    'A chicken crossing the road but stopping to ask for directions',
+    'A cow giving a presentation on why the grass really is greener on the other side',
 
-    // Technology & Modern Life
-    'A robot consultant charging $500/hour to recommend turning it off and on again',
-    'The moment when someone realizes they\'ve been muted on a video call for 10 minutes',
-    'A person trying to explain NFTs to their grandmother',
-    'The expression of someone when their smart home starts ordering things without permission',
-    'A developer trying to center a div for the 1000th time',
-    'The look when someone suggests using Internet Explorer in 2024',
-    'A person realizing they\'ve been arguing with a chatbot for an hour',
-    'The moment when you realize you\'ve been programming in the wrong language all day',
-    'A tech support person\'s face when someone says "I\'m not very computer savvy"',
-    'The expression when someone asks if you can "make it more Web 3.0"'
+    // Office & Work Life
+    'The moment when someone realizes they\'ve been on mute during an important meeting',
+    'A person trying to look productive while their computer loads for 5 minutes',
+    'The expression when asked to work on something "urgent" that\'s been sitting there for months',
+    'Someone pretending to take notes but actually drawing doodles of their coworkers',
+    'The face when you finally understand a joke told in a meeting 3 hours later',
+    'A person trying to eat lunch quietly while on a video call',
+    'The look when someone says "let\'s circle back on this" for the 10th time',
+    'Someone trying to figure out which elevator button to press in a building they visit daily'
   ];
 
   // Fetch available challenge images
