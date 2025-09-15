@@ -93,6 +93,46 @@ if (!fs.existsSync(OUTPUT_DIR)) {
   console.log('Created output directory:', OUTPUT_DIR);
 }
 
+// Image proxy endpoint to serve OpenAI images through our domain
+app.get('/api/proxy-image', async (req, res) => {
+  try {
+    const { url } = req.query;
+
+    if (!url) {
+      return res.status(400).json({ error: 'Missing url parameter' });
+    }
+
+    // Validate it's an OpenAI URL for security
+    if (!url.startsWith('https://oaidalleapiprodscus.blob.core.windows.net/')) {
+      return res.status(400).json({ error: 'Invalid image URL' });
+    }
+
+    console.log('🖼️ Proxying image:', url);
+
+    // Download the image
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      return res.status(response.status).json({ error: 'Failed to fetch image' });
+    }
+
+    // Set appropriate headers
+    res.set({
+      'Content-Type': response.headers.get('content-type') || 'image/jpeg',
+      'Cache-Control': 'public, max-age=3600', // Cache for 1 hour
+      'Access-Control-Allow-Origin': '*'
+    });
+
+    // Stream the image directly to the client
+    const imageBuffer = await response.arrayBuffer();
+    res.send(Buffer.from(imageBuffer));
+
+  } catch (error) {
+    console.error('Error proxying image:', error);
+    res.status(500).json({ error: 'Failed to proxy image' });
+  }
+});
+
 // Initialize OpenAI client
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY

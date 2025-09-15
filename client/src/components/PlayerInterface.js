@@ -9,6 +9,21 @@ const getSocketURL = () => {
   return `${protocol}//${hostname}:${port}`;
 };
 
+// Convert OpenAI image URLs to use our proxy endpoint
+const getProxiedImageUrl = (originalUrl) => {
+  if (!originalUrl) return originalUrl;
+
+  // Only proxy OpenAI URLs, leave other URLs as-is
+  if (originalUrl.startsWith('https://oaidalleapiprodscus.blob.core.windows.net/')) {
+    const baseUrl = process.env.NODE_ENV === 'production'
+      ? window.location.origin
+      : `${window.location.protocol}//${window.location.hostname}:3001`;
+    return `${baseUrl}/api/proxy-image?url=${encodeURIComponent(originalUrl)}`;
+  }
+
+  return originalUrl;
+};
+
 export default function PlayerInterface({ playerId }) {
   const [socket, setSocket] = useState(null);
   const [prompt, setPrompt] = useState('');
@@ -196,7 +211,7 @@ export default function PlayerInterface({ playerId }) {
                   {gameState.target.type === 'image' ? (
                     <div className="flex flex-col items-center space-y-2">
                       <img 
-                        src={gameState.target.imageUrl} 
+                        src={getProxiedImageUrl(gameState.target.imageUrl)} 
                         alt="Challenge"
                         className="max-w-full h-48 object-contain border border-gray-300"
                       />
