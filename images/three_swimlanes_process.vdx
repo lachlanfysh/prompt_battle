@@ -1,0 +1,390 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<VisioDocument xmlns="http://schemas.microsoft.com/visio/2003/core"
+    xmlns:v="http://schemas.microsoft.com/visio/2003/core">
+  <DocumentProperties>
+    <Creator>ChatGPT</Creator>
+    <Title>Sample 3‑Swimlane Process</Title>
+  </DocumentProperties>
+
+  <Colors>
+    <ColorEntry IX="0" RGB="#000000"/>
+    <ColorEntry IX="1" RGB="#FFFFFF"/>
+    <ColorEntry IX="2" RGB="#CFE2F3"/>
+    <ColorEntry IX="3" RGB="#FCE5CD"/>
+    <ColorEntry IX="4" RGB="#D9EAD3"/>
+    <ColorEntry IX="5" RGB="#1F497D"/>
+  </Colors>
+
+  <Fonts>
+    <Font ID="0" Name="Segoe UI"/>
+    <Font ID="1" Name="Arial"/>
+  </Fonts>
+
+  <StyleSheets>
+    <StyleSheet ID="0" NameU="Normal">
+      <TextBlock>
+        <Font>0</Font>
+        <FontSize>9</FontSize>
+      </TextBlock>
+    </StyleSheet>
+  </StyleSheets>
+
+  <Pages>
+    <Page ID="1" NameU="Main">
+      <PageSheet>
+        <PageProps>
+          <PageWidth>14</PageWidth>
+          <PageHeight>8.5</PageHeight>
+        </PageProps>
+      </PageSheet>
+
+      <Shapes>
+        <!-- Swimlanes (background rectangles) -->
+        <!-- Customer Lane -->
+        <Shape ID="1" NameU="Lane-Customer">
+          <XForm>
+            <PinX>7</PinX><PinY>7.5</PinY><Width>14</Width><Height>2.5</Height>
+            <LocPinX>7</LocPinX><LocPinY>1.25</LocPinY>
+          </XForm>
+          <Line><LineColor>0</LineColor></Line>
+          <Fill><FillForegnd>2</FillForegnd></Fill>
+          <Text>Customer</Text>
+          <Geom IX="0">
+            <MoveTo><X>0</X><Y>0</Y></MoveTo>
+            <LineTo><X>14</X><Y>0</Y></LineTo>
+            <LineTo><X>14</X><Y>2.5</Y></LineTo>
+            <LineTo><X>0</X><Y>2.5</Y></LineTo>
+            <LineTo><X>0</X><Y>0</Y></LineTo>
+          </Geom>
+        </Shape>
+
+        <!-- Sales Ops Lane -->
+        <Shape ID="2" NameU="Lane-SalesOps">
+          <XForm>
+            <PinX>7</PinX><PinY>5</PinY><Width>14</Width><Height>2.5</Height>
+            <LocPinX>7</LocPinX><LocPinY>1.25</LocPinY>
+          </XForm>
+          <Line><LineColor>0</LineColor></Line>
+          <Fill><FillForegnd>3</FillForegnd></Fill>
+          <Text>Sales Ops</Text>
+          <Geom IX="0">
+            <MoveTo><X>0</X><Y>0</Y></MoveTo>
+            <LineTo><X>14</X><Y>0</Y></LineTo>
+            <LineTo><X>14</X><Y>2.5</Y></LineTo>
+            <LineTo><X>0</X><Y>2.5</Y></LineTo>
+            <LineTo><X>0</X><Y>0</Y></LineTo>
+          </Geom>
+        </Shape>
+
+        <!-- Finance Lane -->
+        <Shape ID="3" NameU="Lane-Finance">
+          <XForm>
+            <PinX>7</PinX><PinY>2.5</PinY><Width>14</Width><Height>2.5</Height>
+            <LocPinX>7</LocPinX><LocPinY>1.25</LocPinY>
+          </XForm>
+          <Line><LineColor>0</LineColor></Line>
+          <Fill><FillForegnd>4</FillForegnd></Fill>
+          <Text>Finance</Text>
+          <Geom IX="0">
+            <MoveTo><X>0</X><Y>0</Y></MoveTo>
+            <LineTo><X>14</X><Y>0</Y></LineTo>
+            <LineTo><X>14</X><Y>2.5</Y></LineTo>
+            <LineTo><X>0</X><Y>2.5</Y></LineTo>
+            <LineTo><X>0</X><Y>0</Y></LineTo>
+          </Geom>
+        </Shape>
+
+        <!-- Process shapes (rectangles = process, ovals = start/end, diamonds = decision) -->
+        <!-- Start (Customer) -->
+        <Shape ID="10" NameU="Start">
+          <XForm><PinX>1.5</PinX><PinY>7.5</PinY><Width>1.6</Width><Height>0.8</Height><LocPinX>0.8</LocPinX><LocPinY>0.4</LocPinY></XForm>
+          <Line><LineColor>0</LineColor></Line>
+          <Fill><FillForegnd>1</FillForegnd></Fill>
+          <Text>Customer need identified</Text>
+          <Geom IX="0">
+            <!-- Rounded oval-ish: approximated with rectangle loop -->
+            <MoveTo><X>0</X><Y>0</Y></MoveTo>
+            <LineTo><X>1.6</X><Y>0</Y></LineTo>
+            <LineTo><X>1.6</X><Y>0.8</Y></LineTo>
+            <LineTo><X>0</X><Y>0.8</Y></LineTo>
+            <LineTo><X>0</X><Y>0</Y></LineTo>
+          </Geom>
+        </Shape>
+
+        <!-- Submit Request (Customer) -->
+        <Shape ID="11" NameU="Process">
+          <XForm><PinX>4</PinX><PinY>7.5</PinY><Width>2</Width><Height>1</Height><LocPinX>1</LocPinX><LocPinY>0.5</LocPinY></XForm>
+          <Line><LineColor>0</LineColor></Line>
+          <Fill><FillForegnd>1</FillForegnd></Fill>
+          <Text>Submit purchase request</Text>
+          <Geom IX="0">
+            <MoveTo><X>0</X><Y>0</Y></MoveTo>
+            <LineTo><X>2</X><Y>0</Y></LineTo>
+            <LineTo><X>2</X><Y>1</Y></LineTo>
+            <LineTo><X>0</X><Y>1</Y></LineTo>
+            <LineTo><X>0</X><Y>0</Y></LineTo>
+          </Geom>
+        </Shape>
+
+        <!-- Sales Ops: Validate request -->
+        <Shape ID="12" NameU="Process">
+          <XForm><PinX>6.5</PinX><PinY>5</PinY><Width>2.2</Width><Height>1</Height><LocPinX>1.1</LocPinX><LocPinY>0.5</LocPinY></XForm>
+          <Text>Validate request &amp; scope</Text>
+          <Line><LineColor>0</LineColor></Line><Fill><FillForegnd>1</FillForegnd></Fill>
+          <Geom IX="0">
+            <MoveTo><X>0</X><Y>0</Y></MoveTo><LineTo><X>2.2</X><Y>0</Y></LineTo>
+            <LineTo><X>2.2</X><Y>1</Y></LineTo><LineTo><X>0</X><Y>1</Y></LineTo>
+            <LineTo><X>0</X><Y>0</Y></LineTo>
+          </Geom>
+        </Shape>
+
+        <!-- Decision 1: Budget Available? (Sales Ops) -->
+        <Shape ID="13" NameU="Decision">
+          <XForm><PinX>9.2</PinX><PinY>5</PinY><Width>1.6</Width><Height>1.2</Height><LocPinX>0.8</LocPinX><LocPinY>0.6</LocPinY></XForm>
+          <Text>Budget available?</Text>
+          <Line><LineColor>0</LineColor></Line><Fill><FillForegnd>1</FillForegnd></Fill>
+          <Geom IX="0">
+            <!-- Diamond -->
+            <MoveTo><X>0.8</X><Y>0</Y></MoveTo>
+            <LineTo><X>1.6</X><Y>0.6</Y></LineTo>
+            <LineTo><X>0.8</X><Y>1.2</Y></LineTo>
+            <LineTo><X>0</X><Y>0.6</Y></LineTo>
+            <LineTo><X>0.8</X><Y>0</Y></LineTo>
+          </Geom>
+        </Shape>
+
+        <!-- Finance: Create PO -->
+        <Shape ID="14" NameU="Process">
+          <XForm><PinX>11.5</PinX><PinY>2.5</PinY><Width>2.2</Width><Height>1</Height><LocPinX>1.1</LocPinX><LocPinY>0.5</LocPinY></XForm>
+          <Text>Create PO</Text>
+          <Line><LineColor>0</LineColor></Line><Fill><FillForegnd>1</FillForegnd></Fill>
+          <Geom IX="0">
+            <MoveTo><X>0</X><Y>0</Y></MoveTo><LineTo><X>2.2</X><Y>0</Y></LineTo>
+            <LineTo><X>2.2</X><Y>1</Y></LineTo><LineTo><X>0</X><Y>1</Y></LineTo>
+            <LineTo><X>0</X><Y>0</Y></LineTo>
+          </Geom>
+        </Shape>
+
+        <!-- Sales Ops: Source vendors -->
+        <Shape ID="15" NameU="Process">
+          <XForm><PinX>11.3</PinX><PinY>5</PinY><Width>2.2</Width><Height>1</Height><LocPinX>1.1</LocPinX><LocPinY>0.5</LocPinY></XForm>
+          <Text>Source vendors / quotes</Text>
+          <Line><LineColor>0</LineColor></Line><Fill><FillForegnd>1</FillForegnd></Fill>
+          <Geom IX="0">
+            <MoveTo><X>0</X><Y>0</Y></MoveTo><LineTo><X>2.2</X><Y>0</Y></LineTo>
+            <LineTo><X>2.2</X><Y>1</Y></LineTo><LineTo><X>0</X><Y>1</Y></LineTo>
+            <LineTo><X>0</X><Y>0</Y></LineTo>
+          </Geom>
+        </Shape>
+
+        <!-- Decision 2: Vendor approved? (Sales Ops) -->
+        <Shape ID="16" NameU="Decision">
+          <XForm><PinX>13.2</PinX><PinY>5</PinY><Width>1.6</Width><Height>1.2</Height><LocPinX>0.8</LocPinX><LocPinY>0.6</LocPinY></XForm>
+          <Text>Vendor approved?</Text>
+          <Line><LineColor>0</LineColor></Line><Fill><FillForegnd>1</FillForegnd></Fill>
+          <Geom IX="0">
+            <MoveTo><X>0.8</X><Y>0</Y></MoveTo>
+            <LineTo><X>1.6</X><Y>0.6</Y></LineTo>
+            <LineTo><X>0.8</X><Y>1.2</Y></LineTo>
+            <LineTo><X>0</X><Y>0.6</Y></LineTo>
+            <LineTo><X>0.8</X><Y>0</Y></LineTo>
+          </Geom>
+        </Shape>
+
+        <!-- Customer: Review quotation -->
+        <Shape ID="17" NameU="Process">
+          <XForm><PinX>6.2</PinX><PinY>7.5</PinY><Width>2.2</Width><Height>1</Height><LocPinX>1.1</LocPinX><LocPinY>0.5</LocPinY></XForm>
+          <Text>Review quotation</Text>
+          <Line><LineColor>0</LineColor></Line><Fill><FillForegnd>1</FillForegnd></Fill>
+          <Geom IX="0">
+            <MoveTo><X>0</X><Y>0</Y></MoveTo><LineTo><X>2.2</X><Y>0</Y></LineTo>
+            <LineTo><X>2.2</X><Y>1</Y></LineTo><LineTo><X>0</X><Y>1</Y></LineTo>
+            <LineTo><X>0</X><Y>0</Y></LineTo>
+          </Geom>
+        </Shape>
+
+        <!-- Customer: Approve order -->
+        <Shape ID="18" NameU="Process">
+          <XForm><PinX>8.6</PinX><PinY>7.5</PinY><Width>2.2</Width><Height>1</Height><LocPinX>1.1</LocPinX><LocPinY>0.5</LocPinY></XForm>
+          <Text>Approve order</Text>
+          <Line><LineColor>0</LineColor></Line><Fill><FillForegnd>1</FillForegnd></Fill>
+          <Geom IX="0">
+            <MoveTo><X>0</X><Y>0</Y></MoveTo><LineTo><X>2.2</X><Y>0</Y></LineTo>
+            <LineTo><X>2.2</X><Y>1</Y></LineTo><LineTo><X>0</X><Y>1</Y></LineTo>
+            <LineTo><X>0</X><Y>0</Y></LineTo>
+          </Geom>
+        </Shape>
+
+        <!-- Sales Ops: Issue PO to vendor -->
+        <Shape ID="19" NameU="Process">
+          <XForm><PinX>13</PinX><PinY>5</PinY><Width>2</Width><Height>1</Height><LocPinX>1</LocPinX><LocPinY>0.5</LocPinY></XForm>
+          <Text>Issue PO to vendor</Text>
+          <Line><LineColor>0</LineColor></Line><Fill><FillForegnd>1</FillForegnd></Fill>
+          <Geom IX="0">
+            <MoveTo><X>0</X><Y>0</Y></MoveTo><LineTo><X>2</X><Y>0</Y></LineTo>
+            <LineTo><X>2</X><Y>1</Y></LineTo><LineTo><X>0</X><Y>1</Y></LineTo>
+            <LineTo><X>0</X><Y>0</Y></LineTo>
+          </Geom>
+        </Shape>
+
+        <!-- Finance: Receive invoice -->
+        <Shape ID="20" NameU="Process">
+          <XForm><PinX>4</PinX><PinY>2.5</PinY><Width>2.2</Width><Height>1</Height><LocPinX>1.1</LocPinX><LocPinY>0.5</LocPinY></XForm>
+          <Text>Receive invoice</Text>
+          <Line><LineColor>0</LineColor></Line><Fill><FillForegnd>1</FillForegnd></Fill>
+          <Geom IX="0">
+            <MoveTo><X>0</X><Y>0</Y></MoveTo><LineTo><X>2.2</X><Y>0</Y></LineTo>
+            <LineTo><X>2.2</X><Y>1</Y></LineTo><LineTo><X>0</X><Y>1</Y></LineTo>
+            <LineTo><X>0</X><Y>0</Y></LineTo>
+          </Geom>
+        </Shape>
+
+        <!-- Finance: Match 3-way -->
+        <Shape ID="21" NameU="Process">
+          <XForm><PinX>6.8</PinX><PinY>2.5</PinY><Width>2.2</Width><Height>1</Height><LocPinX>1.1</LocPinX><LocPinY>0.5</LocPinY></XForm>
+          <Text>3-way match (PO, GRN, Invoice)</Text>
+          <Line><LineColor>0</LineColor></Line><Fill><FillForegnd>1</FillForegnd></Fill>
+          <Geom IX="0">
+            <MoveTo><X>0</X><Y>0</Y></MoveTo><LineTo><X>2.2</X><Y>0</Y></LineTo>
+            <LineTo><X>2.2</X><Y>1</Y></LineTo><LineTo><X>0</X><Y>1</Y></LineTo>
+            <LineTo><X>0</X><Y>0</Y></LineTo>
+          </Geom>
+        </Shape>
+
+        <!-- Finance: Pay vendor -->
+        <Shape ID="22" NameU="Process">
+          <XForm><PinX>9.4</PinX><PinY>2.5</PinY><Width>2.2</Width><Height>1</Height><LocPinX>1.1</LocPinX><LocPinY>0.5</LocPinY></XForm>
+          <Text>Schedule payment</Text>
+          <Line><LineColor>0</LineColor></Line><Fill><FillForegnd>1</FillForegnd></Fill>
+          <Geom IX="0">
+            <MoveTo><X>0</X><Y>0</Y></MoveTo><LineTo><X>2.2</X><Y>0</Y></LineTo>
+            <LineTo><X>2.2</X><Y>1</Y></LineTo><LineTo><X>0</X><Y>1</Y></LineTo>
+            <LineTo><X>0</X><Y>0</Y></LineTo>
+          </Geom>
+        </Shape>
+
+        <!-- End (Customer) -->
+        <Shape ID="23" NameU="End">
+          <XForm><PinX>13</PinX><PinY>7.5</PinY><Width>1.6</Width><Height>0.8</Height><LocPinX>0.8</LocPinX><LocPinY>0.4</LocPinY></XForm>
+          <Text>Order fulfilled</Text>
+          <Line><LineColor>0</LineColor></Line><Fill><FillForegnd>1</FillForegnd></Fill>
+          <Geom IX="0">
+            <MoveTo><X>0</X><Y>0</Y></MoveTo>
+            <LineTo><X>1.6</X><Y>0</Y></LineTo>
+            <LineTo><X>1.6</X><Y>0.8</Y></LineTo>
+            <LineTo><X>0</X><Y>0.8</Y></LineTo>
+            <LineTo><X>0</X><Y>0</Y></LineTo>
+          </Geom>
+        </Shape>
+
+        <!-- Simple straight connectors as lines (visual only) -->
+        <!-- From Start(10) -> Submit(11) -->
+        <Shape ID="40" NameU="Connector">
+          <Line><LineColor>5</LineColor></Line>
+          <XForm><PinX>2.75</PinX><PinY>7.5</PinY><Width>1.5</Width><Height>0</Height><LocPinX>0.75</LocPinX><LocPinY>0</LocPinY></XForm>
+          <Geom IX="0">
+            <MoveTo><X>0</X><Y>0</Y></MoveTo>
+            <LineTo><X>1.5</X><Y>0</Y></LineTo>
+          </Geom>
+        </Shape>
+
+        <!-- Submit(11) -> Review(17) -->
+        <Shape ID="41" NameU="Connector">
+          <Line><LineColor>5</LineColor></Line>
+          <XForm><PinX>5.1</PinX><PinY>7.5</PinY><Width>1.2</Width><Height>0</Height><LocPinX>0.6</LocPinX><LocPinY>0</LocPinY></XForm>
+          <Geom IX="0"><MoveTo><X>0</X><Y>0</Y></MoveTo><LineTo><X>1.2</X><Y>0</Y></LineTo></Geom>
+        </Shape>
+
+        <!-- Review(17) -> Approve(18) -->
+        <Shape ID="42" NameU="Connector">
+          <Line><LineColor>5</LineColor></Line>
+          <XForm><PinX>7.3</PinX><PinY>7.5</PinY><Width>1</Width><Height>0</Height><LocPinX>0.5</LocPinX><LocPinY>0</LocPinY></XForm>
+          <Geom IX="0"><MoveTo><X>0</X><Y>0</Y></MoveTo><LineTo><X>1</X><Y>0</Y></LineTo></Geom>
+        </Shape>
+
+        <!-- Approve(18) down arrow to SalesOps Validate(12) -->
+        <Shape ID="43" NameU="Connector">
+          <Line><LineColor>5</LineColor></Line>
+          <XForm><PinX>8.6</PinX><PinY>6.25</PinY><Width>0</Width><Height>1.5</Height><LocPinX>0</LocPinX><LocPinY>0.75</LocPinY></XForm>
+          <Geom IX="0"><MoveTo><X>0</X><Y>1.5</Y></MoveTo><LineTo><X>0</X><Y>0</Y></LineTo></Geom>
+        </Shape>
+
+        <!-- Validate(12) -> Budget?(13) -->
+        <Shape ID="44" NameU="Connector">
+          <Line><LineColor>5</LineColor></Line>
+          <XForm><PinX>7.95</PinX><PinY>5</PinY><Width>1.5</Width><Height>0</Height><LocPinX>0.75</LocPinX><LocPinY>0</LocPinY></XForm>
+          <Geom IX="0"><MoveTo><X>0</X><Y>0</Y></MoveTo><LineTo><X>1.5</X><Y>0</Y></LineTo></Geom>
+        </Shape>
+
+        <!-- Budget? yes -> Source vendors(15) -->
+        <Shape ID="45" NameU="Connector">
+          <Line><LineColor>5</LineColor></Line>
+          <XForm><PinX>10.2</PinX><PinY>5</PinY><Width>1.1</Width><Height>0</Height><LocPinX>0.55</LocPinX><LocPinY>0</LocPinY></XForm>
+          <Geom IX="0"><MoveTo><X>0</X><Y>0</Y></MoveTo><LineTo><X>1.1</X><Y>0</Y></LineTo></Geom>
+        </Shape>
+
+        <!-- Budget? no -> Finance Create PO (down-left L path approximated with two lines) -->
+        <Shape ID="46" NameU="Connector">
+          <Line><LineColor>5</LineColor></Line>
+          <XForm><PinX>9.2</PinX><PinY>3.75</PinY><Width>0</Width><Height>1.25</Height><LocPinX>0</LocPinX><LocPinY>0.625</LocPinY></XForm>
+          <Geom IX="0"><MoveTo><X>0</X><Y>1.25</Y></MoveTo><LineTo><X>0</X><Y>0</Y></LineTo></Geom>
+        </Shape>
+        <Shape ID="47" NameU="Connector">
+          <Line><LineColor>5</LineColor></Line>
+          <XForm><PinX>10.35</PinX><PinY>2.5</PinY><Width>1.15</Width><Height>0</Height><LocPinX>0.575</LocPinX><LocPinY>0</LocPinY></XForm>
+          <Geom IX="0"><MoveTo><X>0</X><Y>0</Y></MoveTo><LineTo><X>1.15</X><Y>0</Y></LineTo></Geom>
+        </Shape>
+
+        <!-- Source vendors(15) -> Vendor approved?(16) -->
+        <Shape ID="48" NameU="Connector">
+          <Line><LineColor>5</LineColor></Line>
+          <XForm><PinX>12.35</PinX><PinY>5</PinY><Width>1</Width><Height>0</Height><LocPinX>0.5</LocPinX><LocPinY>0</LocPinY></XForm>
+          <Geom IX="0"><MoveTo><X>0</X><Y>0</Y></MoveTo><LineTo><X>1</X><Y>0</Y></LineTo></Geom>
+        </Shape>
+
+        <!-- Vendor approved? yes -> Issue PO(19) -->
+        <Shape ID="49" NameU="Connector">
+          <Line><LineColor>5</LineColor></Line>
+          <XForm><PinX>14.1</PinX><PinY>5</PinY><Width>0.9</Width><Height>0</Height><LocPinX>0.45</LocPinX><LocPinY>0</LocPinY></XForm>
+          <Geom IX="0"><MoveTo><X>0</X><Y>0</Y></MoveTo><LineTo><X>0.9</X><Y>0</Y></LineTo></Geom>
+        </Shape>
+
+        <!-- Vendor approved? no -> Re-source (back to 15) (left arrow) -->
+        <Shape ID="50" NameU="Connector">
+          <Line><LineColor>5</LineColor></Line>
+          <XForm><PinX>12.25</PinX><PinY>5.8</PinY><Width>1.1</Width><Height>0</Height><LocPinX>0.55</LocPinX><LocPinY>0</LocPinY></XForm>
+          <Geom IX="0"><MoveTo><X>1.1</X><Y>0</Y></MoveTo><LineTo><X>0</X><Y>0</Y></LineTo></Geom>
+        </Shape>
+
+        <!-- Finance chain: Receive invoice(20) -> 3-way(21) -> Pay(22) -> Create PO(14) (visual only) -->
+        <Shape ID="51" NameU="Connector">
+          <Line><LineColor>5</LineColor></Line>
+          <XForm><PinX>5.1</PinX><PinY>2.5</PinY><Width>1.2</Width><Height>0</Height><LocPinX>0.6</LocPinX><LocPinY>0</LocPinY></XForm>
+          <Geom IX="0"><MoveTo><X>0</X><Y>0</Y></MoveTo><LineTo><X>1.2</X><Y>0</Y></LineTo></Geom>
+        </Shape>
+        <Shape ID="52" NameU="Connector">
+          <Line><LineColor>5</LineColor></Line>
+          <XForm><PinX>8.1</PinX><PinY>2.5</PinY><Width>1.3</Width><Height>0</Height><LocPinX>0.65</LocPinX><LocPinY>0</LocPinY></XForm>
+          <Geom IX="0"><MoveTo><X>0</X><Y>0</Y></MoveTo><LineTo><X>1.3</X><Y>0</Y></LineTo></Geom>
+        </Shape>
+        <Shape ID="53" NameU="Connector">
+          <Line><LineColor>5</LineColor></Line>
+          <XForm><PinX>10.55</PinX><PinY>2.5</PinY><Width>1.9</Width><Height>0</Height><LocPinX>0.95</LocPinX><LocPinY>0</LocPinY></XForm>
+          <Geom IX="0"><MoveTo><X>0</X><Y>0</Y></MoveTo><LineTo><X>1.9</X><Y>0</Y></LineTo></Geom>
+        </Shape>
+
+        <!-- To End: Issue PO(19) up to End(23) (two segments) -->
+        <Shape ID="54" NameU="Connector">
+          <Line><LineColor>5</LineColor></Line>
+          <XForm><PinX>13</PinX><PinY>6.25</PinY><Width>0</Width><Height>1.25</Height><LocPinX>0</LocPinX><LocPinY>0.625</LocPinY></XForm>
+          <Geom IX="0"><MoveTo><X>0</X><Y>0</Y></MoveTo><LineTo><X>0</X><Y>1.25</Y></LineTo></Geom>
+        </Shape>
+        <Shape ID="55" NameU="Connector">
+          <Line><LineColor>5</LineColor></Line>
+          <XForm><PinX>13</PinX><PinY>7.5</PinY><Width>0.8</Width><Height>0</Height><LocPinX>0.4</LocPinX><LocPinY>0</LocPinY></XForm>
+          <Geom IX="0"><MoveTo><X>-0.4</X><Y>0</Y></MoveTo><LineTo><X>0.4</X><Y>0</Y></LineTo></Geom>
+        </Shape>
+      </Shapes>
+    </Page>
+  </Pages>
+</VisioDocument>

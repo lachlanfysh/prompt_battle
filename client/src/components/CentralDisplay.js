@@ -170,7 +170,7 @@ const FlockingBirds = ({ playerBoxes }) => {
               const leaderAngle = Math.atan2(other.vy, other.vx);
               const relativeAngle = Math.atan2(dy, dx) - leaderAngle;
 
-              let formationStrength = 0.002; // Stronger formation force
+              let formationStrength = 0.006; // Tripled formation force (3x from 0.002)
 
               if (flockSize <= 8) {
                 // Small flocks: strongly prefer echelon/line formation
@@ -241,28 +241,28 @@ const FlockingBirds = ({ playerBoxes }) => {
           }
         });
 
-        // Apply flocking rules with reduced strength
+        // Apply flocking rules with massively enhanced linear bias
         if (neighbors > 0) {
-          // Alignment - modified by aerodynamic efficiency and much stronger
-          const alignmentStrength = 0.04 + aerodynamicBoost; // Doubled from 0.02
+          // Alignment - tripled again for extreme directional following
+          const alignmentStrength = 0.12 + aerodynamicBoost; // 3x from 0.04 (6x original)
           bird.vx += (avgVx / neighbors - bird.vx) * alignmentStrength;
           bird.vy += (avgVy / neighbors - bird.vy) * alignmentStrength;
 
-          // Cohesion - much weaker to reduce circular clustering
-          const cohesionStrength = 0.0005 + (bird.leadership * 0.0005); // Much weaker
+          // Cohesion - even weaker to prevent any circular clustering
+          const cohesionStrength = 0.0002 + (bird.leadership * 0.0002); // 3x weaker
           bird.vx += ((avgX / neighbors) - bird.x) * cohesionStrength;
           bird.vy += ((avgY / neighbors) - bird.y) * cohesionStrength;
         }
 
-        // Apply V-formation attraction (strengthened)
-        bird.vx += vFormationX * 3; // 3x stronger
-        bird.vy += vFormationY * 3;
+        // Apply V-formation attraction (tripled again)
+        bird.vx += vFormationX * 9; // 9x stronger (3x from 3x)
+        bird.vy += vFormationY * 9;
 
-        // Add strong directional momentum bias to break circles
+        // Add very strong directional momentum bias
         const currentSpeed = Math.sqrt(bird.vx * bird.vx + bird.vy * bird.vy);
         if (currentSpeed > 0) {
-          // Bias toward current direction to maintain linear movement
-          const momentumBias = 0.01;
+          // Much stronger bias toward current direction
+          const momentumBias = 0.03; // 3x from 0.01
           bird.vx += (bird.vx / currentSpeed) * momentumBias;
           bird.vy += (bird.vy / currentSpeed) * momentumBias;
         }
@@ -293,8 +293,8 @@ const FlockingBirds = ({ playerBoxes }) => {
         bird.vx += repelX * separationStrength;
         bird.vy += repelY * (separationStrength + Math.cos(bird.y * 0.01) * 0.03);
 
-        // Add subtle turbulence to break circular patterns
-        const turbulence = 0.002;
+        // Add stronger turbulence to break circular patterns
+        const turbulence = 0.006; // 3x from 0.002
         bird.vx += (Math.sin(bird.x * 0.02 + Date.now() * 0.0001) * turbulence);
         bird.vy += (Math.cos(bird.y * 0.015 + Date.now() * 0.0001) * turbulence);
 
