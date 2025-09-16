@@ -95,6 +95,7 @@ const FlockingBirds = ({ playerBoxes }) => {
         let repelX = 0, repelY = 0;
         let vFormationX = 0, vFormationY = 0;
         let aerodynamicBoost = 0;
+        let boundaryPressure = { x: 0, y: 0 };
 
         // Check other birds
         birds.forEach(other => {
@@ -160,6 +161,24 @@ const FlockingBirds = ({ playerBoxes }) => {
             avgVx += other.vx;
             avgVy += other.vy;
             neighbors++;
+
+            // Boundary pressure wave - birds near boundaries warn flockmates
+            const margin = 60; // Detection zone around boundaries
+            const pressureStrength = 0.15;
+
+            // If other bird is near a boundary, it pushes this bird away from that boundary
+            if (other.x < margin) { // Other bird near left wall
+              boundaryPressure.x += pressureStrength * (margin - other.x) / margin;
+            }
+            if (other.x > canvas.width - margin) { // Other bird near right wall
+              boundaryPressure.x -= pressureStrength * (margin - (canvas.width - other.x)) / margin;
+            }
+            if (other.y < margin) { // Other bird near top wall
+              boundaryPressure.y += pressureStrength * (margin - other.y) / margin;
+            }
+            if (other.y > canvas.height - margin) { // Other bird near bottom wall
+              boundaryPressure.y -= pressureStrength * (margin - (canvas.height - other.y)) / margin;
+            }
 
             // Adaptive formation behavior based on flock size
             if (other.leadership > bird.leadership && dist < 80) {
@@ -257,6 +276,10 @@ const FlockingBirds = ({ playerBoxes }) => {
         // Apply V-formation attraction (tripled again)
         bird.vx += vFormationX * 9; // 9x stronger (3x from 3x)
         bird.vy += vFormationY * 9;
+
+        // Apply boundary pressure wave from flockmates
+        bird.vx += boundaryPressure.x;
+        bird.vy += boundaryPressure.y;
 
         // Add very strong directional momentum bias
         const currentSpeed = Math.sqrt(bird.vx * bird.vx + bird.vy * bird.vy);
