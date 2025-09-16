@@ -298,31 +298,35 @@ const FlockingBirds = ({ playerBoxes }) => {
         bird.vx += (Math.sin(bird.x * 0.02 + Date.now() * 0.0001) * turbulence);
         bird.vy += (Math.cos(bird.y * 0.015 + Date.now() * 0.0001) * turbulence);
 
-        // Improved boundary conditions - maintain momentum with reflection
-        const margin = 40;
+        // Much stronger boundary conditions to match internal forces
+        const margin = 50; // Larger margin
         const speedAtBoundary = Math.sqrt(bird.vx * bird.vx + bird.vy * bird.vy);
 
         if (bird.x < margin) {
-          bird.vx = Math.abs(bird.vx) + 0.2; // Reflect and boost
-          if (speedAtBoundary > 0) bird.vx = Math.max(bird.vx, speedAtBoundary * 0.8); // Maintain momentum
+          const pushForce = 0.8 + (margin - bird.x) * 0.02; // Much stronger, escalating force
+          bird.vx = Math.abs(bird.vx) + pushForce;
+          if (speedAtBoundary > 0) bird.vx = Math.max(bird.vx, speedAtBoundary * 1.2); // Boost momentum
         }
         if (bird.x > canvas.width - margin) {
-          bird.vx = -Math.abs(bird.vx) - 0.2; // Reflect and boost
-          if (speedAtBoundary > 0) bird.vx = Math.min(bird.vx, -speedAtBoundary * 0.8); // Maintain momentum
+          const pushForce = 0.8 + (bird.x - (canvas.width - margin)) * 0.02;
+          bird.vx = -Math.abs(bird.vx) - pushForce;
+          if (speedAtBoundary > 0) bird.vx = Math.min(bird.vx, -speedAtBoundary * 1.2);
         }
         if (bird.y < margin) {
-          bird.vy = Math.abs(bird.vy) + 0.2; // Reflect and boost
-          if (speedAtBoundary > 0) bird.vy = Math.max(bird.vy, speedAtBoundary * 0.8); // Maintain momentum
+          const pushForce = 0.8 + (margin - bird.y) * 0.02;
+          bird.vy = Math.abs(bird.vy) + pushForce;
+          if (speedAtBoundary > 0) bird.vy = Math.max(bird.vy, speedAtBoundary * 1.2);
         }
         if (bird.y > canvas.height - margin) {
-          bird.vy = -Math.abs(bird.vy) - 0.2; // Reflect and boost
-          if (speedAtBoundary > 0) bird.vy = Math.min(bird.vy, -speedAtBoundary * 0.8); // Maintain momentum
+          const pushForce = 0.8 + (bird.y - (canvas.height - margin)) * 0.02;
+          bird.vy = -Math.abs(bird.vy) - pushForce;
+          if (speedAtBoundary > 0) bird.vy = Math.min(bird.vy, -speedAtBoundary * 1.2);
         }
 
-        // Limit speed and maintain minimum momentum
+        // Limit speed and maintain stronger minimum momentum
         const speed = Math.sqrt(bird.vx * bird.vx + bird.vy * bird.vy);
-        const maxSpeed = 1.2; // Slightly faster
-        const minSpeed = 0.3; // Prevent getting stuck
+        const maxSpeed = 1.5; // Faster to overcome stronger forces
+        const minSpeed = 0.5; // Higher minimum to prevent getting stuck
 
         if (speed > maxSpeed) {
           bird.vx = (bird.vx / speed) * maxSpeed;
@@ -332,9 +336,9 @@ const FlockingBirds = ({ playerBoxes }) => {
           bird.vx = (bird.vx / speed) * minSpeed;
           bird.vy = (bird.vy / speed) * minSpeed;
         } else if (speed === 0) {
-          // Give stuck birds a random kick
-          bird.vx = (Math.random() - 0.5) * minSpeed;
-          bird.vy = (Math.random() - 0.5) * minSpeed;
+          // Give stuck birds a stronger random kick
+          bird.vx = (Math.random() - 0.5) * minSpeed * 2;
+          bird.vy = (Math.random() - 0.5) * minSpeed * 2;
         }
 
         // Update position
