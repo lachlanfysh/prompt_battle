@@ -65,7 +65,9 @@ const FlockingBirds = ({ playerBoxes }) => {
             vy: (Math.random() - 0.5) * 0.8,
             size: Math.random() * 4 + 6,
             flock: flock,
-            reflockCooldown: 0 // Prevents rapid flock switching
+            reflockCooldown: 0, // Prevents rapid flock switching
+            leadership: Math.random(), // 0-1, higher values = more likely to lead
+            energy: 1.0 // Aerodynamic efficiency, affected by wake positions
           });
         }
       }
@@ -91,6 +93,8 @@ const FlockingBirds = ({ playerBoxes }) => {
         let avgX = 0, avgY = 0, avgVx = 0, avgVy = 0;
         let neighbors = 0;
         let repelX = 0, repelY = 0;
+        let vFormationX = 0, vFormationY = 0;
+        let aerodynamicBoost = 0;
 
         // Check other birds
         birds.forEach(other => {
@@ -149,13 +153,41 @@ const FlockingBirds = ({ playerBoxes }) => {
 
           // Cohesion and alignment only within same flock
           // Variable neighbor distance based on bird size for more natural spacing
-          const neighborDistance = 60 + bird.size * 3; // 78-90px range
+          const neighborDistance = 70 + bird.size * 4; // Increased spacing: 94-110px range
           if (other.flock === bird.flock && dist < neighborDistance) {
             avgX += other.x;
             avgY += other.y;
             avgVx += other.vx;
             avgVy += other.vy;
             neighbors++;
+
+            // V-formation behavior: prefer positions behind and to the side of leaders
+            if (other.leadership > bird.leadership && dist < 80) {
+              // Calculate relative position to the leader
+              const leaderAngle = Math.atan2(other.vy, other.vx);
+              const relativeAngle = Math.atan2(dy, dx) - leaderAngle;
+
+              // Prefer 45-degree angles behind the leader (V-formation)
+              const idealAngle1 = Math.PI * 0.75; // 135 degrees
+              const idealAngle2 = Math.PI * 1.25; // 225 degrees
+
+              let angleDiff1 = Math.abs(relativeAngle - idealAngle1);
+              let angleDiff2 = Math.abs(relativeAngle - idealAngle2);
+              if (angleDiff1 > Math.PI) angleDiff1 = 2 * Math.PI - angleDiff1;
+              if (angleDiff2 > Math.PI) angleDiff2 = 2 * Math.PI - angleDiff2;
+
+              const minAngleDiff = Math.min(angleDiff1, angleDiff2);
+              if (minAngleDiff < Math.PI / 3) { // Within 60 degrees of ideal V position
+                // Aerodynamic benefit - less energy needed when in formation
+                aerodynamicBoost += (1 - minAngleDiff / (Math.PI / 3)) * 0.02;
+
+                // Slight attraction to maintain V position
+                const targetAngle = angleDiff1 < angleDiff2 ? idealAngle1 : idealAngle2;
+                const adjustAngle = leaderAngle + targetAngle;
+                vFormationX += Math.cos(adjustAngle) * 0.001;
+                vFormationY += Math.sin(adjustAngle) * 0.001;
+              }
+            }
           }
         });
 
@@ -175,14 +207,20 @@ const FlockingBirds = ({ playerBoxes }) => {
 
         // Apply flocking rules with reduced strength
         if (neighbors > 0) {
-          // Alignment - slower
-          bird.vx += (avgVx / neighbors - bird.vx) * 0.02;
-          bird.vy += (avgVy / neighbors - bird.vy) * 0.02;
+          // Alignment - modified by aerodynamic efficiency
+          const alignmentStrength = 0.02 + aerodynamicBoost;
+          bird.vx += (avgVx / neighbors - bird.vx) * alignmentStrength;
+          bird.vy += (avgVy / neighbors - bird.vy) * alignmentStrength;
 
-          // Cohesion - slower
-          bird.vx += ((avgX / neighbors) - bird.x) * 0.003;
-          bird.vy += ((avgY / neighbors) - bird.y) * 0.003;
+          // Cohesion - asymmetric based on leadership and position
+          const cohesionStrength = 0.002 + (bird.leadership * 0.001); // Leaders are less cohesive
+          bird.vx += ((avgX / neighbors) - bird.x) * cohesionStrength;
+          bird.vy += ((avgY / neighbors) - bird.y) * cohesionStrength;
         }
+
+        // Apply V-formation attraction
+        bird.vx += vFormationX;
+        bird.vy += vFormationY;
 
         // Add slight bias to keep flocks spread out
         const flockBias = 0.001;
@@ -205,9 +243,15 @@ const FlockingBirds = ({ playerBoxes }) => {
             break;
         }
 
-        // Separation - stronger to maintain minimum distances
-        bird.vx += repelX * 0.15;
-        bird.vy += repelY * 0.15;
+        // Separation - stronger to maintain minimum distances, with asymmetric spacing
+        const separationStrength = 0.12 + (Math.sin(bird.x * 0.01) * 0.03); // Asymmetric variation
+        bird.vx += repelX * separationStrength;
+        bird.vy += repelY * (separationStrength + Math.cos(bird.y * 0.01) * 0.03);
+
+        // Add subtle turbulence to break circular patterns
+        const turbulence = 0.002;
+        bird.vx += (Math.sin(bird.x * 0.02 + Date.now() * 0.0001) * turbulence);
+        bird.vy += (Math.cos(bird.y * 0.015 + Date.now() * 0.0001) * turbulence);
 
         // Strong boundary conditions - hard walls
         const margin = 30;
