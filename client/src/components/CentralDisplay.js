@@ -76,8 +76,9 @@ const FlockingBirds = ({ playerBoxes }) => {
     const resizeCanvas = () => {
       const parent = canvas.parentElement;
       if (parent) {
-        canvas.width = parent.offsetWidth;
-        canvas.height = parent.offsetHeight;
+        // Constrain to viewport to prevent window expansion
+        canvas.width = Math.min(parent.offsetWidth, window.innerWidth);
+        canvas.height = Math.min(parent.offsetHeight, window.innerHeight);
       }
     };
 
@@ -409,7 +410,11 @@ const FlockingBirds = ({ playerBoxes }) => {
     <canvas
       ref={canvasRef}
       className="absolute inset-0 pointer-events-none w-full h-full"
-      style={{ zIndex: 1 }}
+      style={{
+        zIndex: 1,
+        maxHeight: '100vh',
+        maxWidth: '100vw'
+      }}
     />
   );
 };
