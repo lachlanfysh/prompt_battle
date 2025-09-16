@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import io from 'socket.io-client';
 import QRCode from 'qrcode';
 
@@ -24,6 +24,154 @@ const getProxiedImageUrl = (originalUrl) => {
   return originalUrl;
 };
 
+// Flocking Birds Component
+const FlockingBirds = ({ playerBoxes }) => {
+  const canvasRef = useRef(null);
+  const animationRef = useRef(null);
+  const birdsRef = useRef([]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    const birds = birdsRef.current;
+
+    // Initialize birds
+    if (birds.length === 0) {
+      for (let i = 0; i < 15; i++) {
+        birds.push({
+          x: Math.random() * canvas.width,
+          y: Math.random() * canvas.height,
+          vx: (Math.random() - 0.5) * 2,
+          vy: (Math.random() - 0.5) * 2,
+          size: Math.random() * 3 + 2
+        });
+      }
+    }
+
+    const resizeCanvas = () => {
+      canvas.width = canvas.offsetWidth;
+      canvas.height = canvas.offsetHeight;
+    };
+
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    const animate = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Update each bird
+      birds.forEach(bird => {
+        // Flocking behavior
+        let avgX = 0, avgY = 0, avgVx = 0, avgVy = 0;
+        let neighbors = 0;
+        let repelX = 0, repelY = 0;
+
+        // Check other birds
+        birds.forEach(other => {
+          if (other === bird) return;
+          const dx = other.x - bird.x;
+          const dy = other.y - bird.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+
+          if (dist < 50) { // Neighbor distance
+            avgX += other.x;
+            avgY += other.y;
+            avgVx += other.vx;
+            avgVy += other.vy;
+            neighbors++;
+
+            if (dist < 20) { // Too close, repel
+              repelX -= dx / dist;
+              repelY -= dy / dist;
+            }
+          }
+        });
+
+        // Avoid player boxes (obstacles)
+        playerBoxes.forEach(box => {
+          const dx = bird.x - (box.x + box.width / 2);
+          const dy = bird.y - (box.y + box.height / 2);
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const avoidDistance = 80;
+
+          if (dist < avoidDistance) {
+            const strength = (avoidDistance - dist) / avoidDistance;
+            repelX += (dx / dist) * strength * 3;
+            repelY += (dy / dist) * strength * 3;
+          }
+        });
+
+        // Apply flocking rules
+        if (neighbors > 0) {
+          // Alignment
+          bird.vx += (avgVx / neighbors - bird.vx) * 0.03;
+          bird.vy += (avgVy / neighbors - bird.vy) * 0.03;
+
+          // Cohesion
+          bird.vx += ((avgX / neighbors) - bird.x) * 0.005;
+          bird.vy += ((avgY / neighbors) - bird.y) * 0.005;
+        }
+
+        // Separation
+        bird.vx += repelX * 0.1;
+        bird.vy += repelY * 0.1;
+
+        // Boundary conditions
+        if (bird.x < 20) bird.vx += 0.1;
+        if (bird.x > canvas.width - 20) bird.vx -= 0.1;
+        if (bird.y < 20) bird.vy += 0.1;
+        if (bird.y > canvas.height - 20) bird.vy -= 0.1;
+
+        // Limit speed
+        const speed = Math.sqrt(bird.vx * bird.vx + bird.vy * bird.vy);
+        if (speed > 2) {
+          bird.vx = (bird.vx / speed) * 2;
+          bird.vy = (bird.vy / speed) * 2;
+        }
+
+        // Update position
+        bird.x += bird.vx;
+        bird.y += bird.vy;
+
+        // Draw bird
+        ctx.save();
+        ctx.translate(bird.x, bird.y);
+        ctx.rotate(Math.atan2(bird.vy, bird.vx));
+        ctx.fillStyle = '#333';
+        ctx.beginPath();
+        ctx.moveTo(bird.size, 0);
+        ctx.lineTo(-bird.size, -bird.size/2);
+        ctx.lineTo(-bird.size/2, 0);
+        ctx.lineTo(-bird.size, bird.size/2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      });
+
+      animationRef.current = requestAnimationFrame(animate);
+    };
+
+    animate();
+
+    return () => {
+      window.removeEventListener('resize', resizeCanvas);
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+  }, [playerBoxes]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="absolute inset-0 pointer-events-none"
+      style={{ zIndex: 1 }}
+    />
+  );
+};
+
 export default function CentralDisplay() {
   const [socket, setSocket] = useState(null);
   const [gameState, setGameState] = useState(null);
@@ -35,7 +183,26 @@ export default function CentralDisplay() {
   const [hasGeneratedNextPlayer, setHasGeneratedNextPlayer] = useState(false);
   const [gptScoring, setGptScoring] = useState(null);
   const [scoringLoading, setScoringLoading] = useState(false);
+  const waitingContainerRef = useRef(null);
+  const [playerBoxes, setPlayerBoxes] = useState([]);
   
+  // Update player box positions for flocking birds
+  useEffect(() => {
+    const updatePlayerBoxes = () => {
+      if (waitingContainerRef.current) {
+        const containerRect = waitingContainerRef.current.getBoundingClientRect();
+        setPlayerBoxes([
+          { x: containerRect.width * 0.2, y: containerRect.height * 0.4, width: 250, height: 300 },
+          { x: containerRect.width * 0.8 - 250, y: containerRect.height * 0.4, width: 250, height: 300 }
+        ]);
+      }
+    };
+
+    updatePlayerBoxes();
+    window.addEventListener('resize', updatePlayerBoxes);
+    return () => window.removeEventListener('resize', updatePlayerBoxes);
+  }, [gameState?.phase]);
+
   // Generate initial QR codes
   useEffect(() => {
     const generateInitialQRCodes = async () => {
@@ -582,11 +749,14 @@ export default function CentralDisplay() {
 
             {/* Waiting for Players - QR codes */}
             {(!gameState || gameState.phase === 'waiting') && (
-              <div className="text-center">
-                <div className="text-6xl mb-8">⏳</div>
-                <p style={{ fontSize: '24px' }} className="mb-8">Scan QR codes to join the battle!</p>
-                
-                <div className="grid grid-cols-2 gap-8 max-w-2xl mx-auto">
+              <div ref={waitingContainerRef} className="text-center relative min-h-screen">
+                {/* Flocking Birds Animation */}
+                <FlockingBirds playerBoxes={playerBoxes} />
+
+                <div className="text-6xl mb-8 relative z-10 pt-20">⏳</div>
+                <p style={{ fontSize: '24px' }} className="mb-8 relative z-10">Scan QR codes to join the battle!</p>
+
+                <div className="grid grid-cols-2 gap-8 max-w-2xl mx-auto relative z-10">
                   {[1, 2].map(playerId => (
                     <div key={playerId} className="border-2 border-black p-6 bg-white" style={{
                       boxShadow: '4px 4px 0px #999'
