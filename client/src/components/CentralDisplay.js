@@ -37,24 +37,35 @@ const FlockingBirds = ({ playerBoxes }) => {
     const ctx = canvas.getContext('2d');
     const birds = birdsRef.current;
 
-    // Initialize birds in multiple flocks
+    // Initialize birds in multiple flocks with variable sizes
     if (birds.length === 0) {
       const numFlocks = 4;
-      const birdsPerFlock = 8;
+      // Random flock sizes: 16-24 birds each (2-3x bigger)
+      const flockSizes = [
+        Math.floor(Math.random() * 9) + 16, // 16-24
+        Math.floor(Math.random() * 9) + 16, // 16-24
+        Math.floor(Math.random() * 9) + 16, // 16-24
+        Math.floor(Math.random() * 9) + 16  // 16-24
+      ];
 
       for (let flock = 0; flock < numFlocks; flock++) {
         // Create flock center
         const flockCenterX = (Math.random() * 0.6 + 0.2) * canvas.width;
         const flockCenterY = (Math.random() * 0.6 + 0.2) * canvas.height;
 
-        for (let i = 0; i < birdsPerFlock; i++) {
+        for (let i = 0; i < flockSizes[flock]; i++) {
+          // Variable spacing within flock for more natural look
+          const spacing = Math.random() * 150 + 50; // 50-200px spacing
+          const angle = Math.random() * Math.PI * 2;
+
           birds.push({
-            x: flockCenterX + (Math.random() - 0.5) * 100,
-            y: flockCenterY + (Math.random() - 0.5) * 100,
-            vx: (Math.random() - 0.5) * 0.8, // Slower initial speed
+            x: flockCenterX + Math.cos(angle) * spacing * Math.random(),
+            y: flockCenterY + Math.sin(angle) * spacing * Math.random(),
+            vx: (Math.random() - 0.5) * 0.8,
             vy: (Math.random() - 0.5) * 0.8,
-            size: Math.random() * 4 + 6, // 2x bigger: 6-10 instead of 3-5
-            flock: flock
+            size: Math.random() * 4 + 6,
+            flock: flock,
+            reflockCooldown: 0 // Prevents rapid flock switching
           });
         }
       }
@@ -88,6 +99,15 @@ const FlockingBirds = ({ playerBoxes }) => {
           const dy = other.y - bird.y;
           const dist = Math.sqrt(dx * dx + dy * dy);
 
+          // Reflocking behavior - birds can switch flocks when they collide
+          if (other.flock !== bird.flock && dist < 15 && bird.reflockCooldown <= 0) {
+            // Small chance of joining the other bird's flock
+            if (Math.random() < 0.03) { // 3% chance per frame when very close
+              bird.flock = other.flock;
+              bird.reflockCooldown = 300; // 5 second cooldown at 60fps
+            }
+          }
+
           // Separation applies to all birds (avoid crowding)
           if (dist < 25) { // Too close, repel from any bird
             repelX -= dx / dist;
@@ -95,7 +115,9 @@ const FlockingBirds = ({ playerBoxes }) => {
           }
 
           // Cohesion and alignment only within same flock
-          if (other.flock === bird.flock && dist < 80) { // Same flock neighbor distance
+          // Variable neighbor distance based on bird size for more natural spacing
+          const neighborDistance = 60 + bird.size * 3; // 78-90px range
+          if (other.flock === bird.flock && dist < neighborDistance) {
             avgX += other.x;
             avgY += other.y;
             avgVx += other.vx;
@@ -174,6 +196,11 @@ const FlockingBirds = ({ playerBoxes }) => {
         // Update position
         bird.x += bird.vx;
         bird.y += bird.vy;
+
+        // Update cooldown
+        if (bird.reflockCooldown > 0) {
+          bird.reflockCooldown--;
+        }
 
         // Hard boundary enforcement (keep birds strictly inside)
         const buffer = 10;
