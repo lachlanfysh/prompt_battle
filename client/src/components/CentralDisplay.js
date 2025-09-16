@@ -170,28 +170,42 @@ const FlockingBirds = ({ playerBoxes }) => {
               const leaderAngle = Math.atan2(other.vy, other.vx);
               const relativeAngle = Math.atan2(dy, dx) - leaderAngle;
 
-              let formationStrength = 0.0005; // Much weaker base formation force
+              let formationStrength = 0.002; // Stronger formation force
 
               if (flockSize <= 8) {
-                // Small flocks: prefer echelon/line formation (side-by-side offset)
+                // Small flocks: strongly prefer echelon/line formation
                 const echelonAngle = Math.PI * 0.5; // 90 degrees (side)
                 const echelonAngle2 = Math.PI * 1.5; // 270 degrees (other side)
 
+                // Also add slight behind preference for lines
+                const lineAngle1 = Math.PI * 0.7; // 126 degrees (behind-side)
+                const lineAngle2 = Math.PI * 1.3; // 234 degrees (behind-other-side)
+
                 let angleDiff1 = Math.abs(relativeAngle - echelonAngle);
                 let angleDiff2 = Math.abs(relativeAngle - echelonAngle2);
+                let angleDiff3 = Math.abs(relativeAngle - lineAngle1);
+                let angleDiff4 = Math.abs(relativeAngle - lineAngle2);
+
                 if (angleDiff1 > Math.PI) angleDiff1 = 2 * Math.PI - angleDiff1;
                 if (angleDiff2 > Math.PI) angleDiff2 = 2 * Math.PI - angleDiff2;
+                if (angleDiff3 > Math.PI) angleDiff3 = 2 * Math.PI - angleDiff3;
+                if (angleDiff4 > Math.PI) angleDiff4 = 2 * Math.PI - angleDiff4;
 
-                const minAngleDiff = Math.min(angleDiff1, angleDiff2);
-                if (minAngleDiff < Math.PI / 2) { // Echelon formation
-                  aerodynamicBoost += (1 - minAngleDiff / (Math.PI / 2)) * 0.015;
-                  const targetAngle = angleDiff1 < angleDiff2 ? echelonAngle : echelonAngle2;
+                const minAngleDiff = Math.min(angleDiff1, angleDiff2, angleDiff3, angleDiff4);
+                if (minAngleDiff < Math.PI / 2) { // Linear formation
+                  aerodynamicBoost += (1 - minAngleDiff / (Math.PI / 2)) * 0.025;
+
+                  let targetAngle = echelonAngle;
+                  if (angleDiff2 === minAngleDiff) targetAngle = echelonAngle2;
+                  else if (angleDiff3 === minAngleDiff) targetAngle = lineAngle1;
+                  else if (angleDiff4 === minAngleDiff) targetAngle = lineAngle2;
+
                   const adjustAngle = leaderAngle + targetAngle;
                   vFormationX += Math.cos(adjustAngle) * formationStrength;
                   vFormationY += Math.sin(adjustAngle) * formationStrength;
                 }
               } else {
-                // Larger flocks: V-formation but only when beneficial
+                // Larger flocks: V-formation but less rigid
                 const idealAngle1 = Math.PI * 0.75; // 135 degrees
                 const idealAngle2 = Math.PI * 1.25; // 225 degrees
 
@@ -205,8 +219,8 @@ const FlockingBirds = ({ playerBoxes }) => {
                   aerodynamicBoost += (1 - minAngleDiff / (Math.PI / 3)) * 0.02;
                   const targetAngle = angleDiff1 < angleDiff2 ? idealAngle1 : idealAngle2;
                   const adjustAngle = leaderAngle + targetAngle;
-                  vFormationX += Math.cos(adjustAngle) * formationStrength;
-                  vFormationY += Math.sin(adjustAngle) * formationStrength;
+                  vFormationX += Math.cos(adjustAngle) * formationStrength * 0.5; // Weaker for large flocks
+                  vFormationY += Math.sin(adjustAngle) * formationStrength * 0.5;
                 }
               }
             }
@@ -229,20 +243,29 @@ const FlockingBirds = ({ playerBoxes }) => {
 
         // Apply flocking rules with reduced strength
         if (neighbors > 0) {
-          // Alignment - modified by aerodynamic efficiency
-          const alignmentStrength = 0.02 + aerodynamicBoost;
+          // Alignment - modified by aerodynamic efficiency and much stronger
+          const alignmentStrength = 0.04 + aerodynamicBoost; // Doubled from 0.02
           bird.vx += (avgVx / neighbors - bird.vx) * alignmentStrength;
           bird.vy += (avgVy / neighbors - bird.vy) * alignmentStrength;
 
-          // Cohesion - asymmetric based on leadership and position
-          const cohesionStrength = 0.002 + (bird.leadership * 0.001); // Leaders are less cohesive
+          // Cohesion - much weaker to reduce circular clustering
+          const cohesionStrength = 0.0005 + (bird.leadership * 0.0005); // Much weaker
           bird.vx += ((avgX / neighbors) - bird.x) * cohesionStrength;
           bird.vy += ((avgY / neighbors) - bird.y) * cohesionStrength;
         }
 
-        // Apply V-formation attraction
-        bird.vx += vFormationX;
-        bird.vy += vFormationY;
+        // Apply V-formation attraction (strengthened)
+        bird.vx += vFormationX * 3; // 3x stronger
+        bird.vy += vFormationY * 3;
+
+        // Add strong directional momentum bias to break circles
+        const currentSpeed = Math.sqrt(bird.vx * bird.vx + bird.vy * bird.vy);
+        if (currentSpeed > 0) {
+          // Bias toward current direction to maintain linear movement
+          const momentumBias = 0.01;
+          bird.vx += (bird.vx / currentSpeed) * momentumBias;
+          bird.vy += (bird.vy / currentSpeed) * momentumBias;
+        }
 
         // Add slight bias to keep flocks spread out
         const flockBias = 0.001;
@@ -277,23 +300,23 @@ const FlockingBirds = ({ playerBoxes }) => {
 
         // Improved boundary conditions - maintain momentum with reflection
         const margin = 40;
-        const currentSpeed = Math.sqrt(bird.vx * bird.vx + bird.vy * bird.vy);
+        const speedAtBoundary = Math.sqrt(bird.vx * bird.vx + bird.vy * bird.vy);
 
         if (bird.x < margin) {
           bird.vx = Math.abs(bird.vx) + 0.2; // Reflect and boost
-          if (currentSpeed > 0) bird.vx = Math.max(bird.vx, currentSpeed * 0.8); // Maintain momentum
+          if (speedAtBoundary > 0) bird.vx = Math.max(bird.vx, speedAtBoundary * 0.8); // Maintain momentum
         }
         if (bird.x > canvas.width - margin) {
           bird.vx = -Math.abs(bird.vx) - 0.2; // Reflect and boost
-          if (currentSpeed > 0) bird.vx = Math.min(bird.vx, -currentSpeed * 0.8); // Maintain momentum
+          if (speedAtBoundary > 0) bird.vx = Math.min(bird.vx, -speedAtBoundary * 0.8); // Maintain momentum
         }
         if (bird.y < margin) {
           bird.vy = Math.abs(bird.vy) + 0.2; // Reflect and boost
-          if (currentSpeed > 0) bird.vy = Math.max(bird.vy, currentSpeed * 0.8); // Maintain momentum
+          if (speedAtBoundary > 0) bird.vy = Math.max(bird.vy, speedAtBoundary * 0.8); // Maintain momentum
         }
         if (bird.y > canvas.height - margin) {
           bird.vy = -Math.abs(bird.vy) - 0.2; // Reflect and boost
-          if (currentSpeed > 0) bird.vy = Math.min(bird.vy, -currentSpeed * 0.8); // Maintain momentum
+          if (speedAtBoundary > 0) bird.vy = Math.min(bird.vy, -speedAtBoundary * 0.8); // Maintain momentum
         }
 
         // Limit speed and maintain minimum momentum
