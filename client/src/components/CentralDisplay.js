@@ -53,7 +53,7 @@ const FlockingBirds = ({ playerBoxes }) => {
             y: flockCenterY + (Math.random() - 0.5) * 100,
             vx: (Math.random() - 0.5) * 0.8, // Slower initial speed
             vy: (Math.random() - 0.5) * 0.8,
-            size: Math.random() * 2 + 3,
+            size: Math.random() * 4 + 6, // 2x bigger: 6-10 instead of 3-5
             flock: flock
           });
         }
@@ -88,17 +88,19 @@ const FlockingBirds = ({ playerBoxes }) => {
           const dy = other.y - bird.y;
           const dist = Math.sqrt(dx * dx + dy * dy);
 
-          if (dist < 50) { // Neighbor distance
+          // Separation applies to all birds (avoid crowding)
+          if (dist < 25) { // Too close, repel from any bird
+            repelX -= dx / dist;
+            repelY -= dy / dist;
+          }
+
+          // Cohesion and alignment only within same flock
+          if (other.flock === bird.flock && dist < 80) { // Same flock neighbor distance
             avgX += other.x;
             avgY += other.y;
             avgVx += other.vx;
             avgVy += other.vy;
             neighbors++;
-
-            if (dist < 20) { // Too close, repel
-              repelX -= dx / dist;
-              repelY -= dy / dist;
-            }
           }
         });
 
@@ -119,12 +121,33 @@ const FlockingBirds = ({ playerBoxes }) => {
         // Apply flocking rules with reduced strength
         if (neighbors > 0) {
           // Alignment - slower
-          bird.vx += (avgVx / neighbors - bird.vx) * 0.015;
-          bird.vy += (avgVy / neighbors - bird.vy) * 0.015;
+          bird.vx += (avgVx / neighbors - bird.vx) * 0.02;
+          bird.vy += (avgVy / neighbors - bird.vy) * 0.02;
 
           // Cohesion - slower
-          bird.vx += ((avgX / neighbors) - bird.x) * 0.002;
-          bird.vy += ((avgY / neighbors) - bird.y) * 0.002;
+          bird.vx += ((avgX / neighbors) - bird.x) * 0.003;
+          bird.vy += ((avgY / neighbors) - bird.y) * 0.003;
+        }
+
+        // Add slight bias to keep flocks spread out
+        const flockBias = 0.001;
+        switch(bird.flock) {
+          case 0: // Top-left bias
+            bird.vx -= flockBias;
+            bird.vy -= flockBias;
+            break;
+          case 1: // Top-right bias
+            bird.vx += flockBias;
+            bird.vy -= flockBias;
+            break;
+          case 2: // Bottom-left bias
+            bird.vx -= flockBias;
+            bird.vy += flockBias;
+            break;
+          case 3: // Bottom-right bias
+            bird.vx += flockBias;
+            bird.vy += flockBias;
+            break;
         }
 
         // Separation - reduced
