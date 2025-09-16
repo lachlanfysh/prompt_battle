@@ -298,29 +298,28 @@ const FlockingBirds = ({ playerBoxes }) => {
         bird.vx += (Math.sin(bird.x * 0.02 + Date.now() * 0.0001) * turbulence);
         bird.vy += (Math.cos(bird.y * 0.015 + Date.now() * 0.0001) * turbulence);
 
-        // Much stronger boundary conditions to match internal forces
-        const margin = 50; // Larger margin
+        // Forceful boundary bounce - decisive reflection away from edges
+        const margin = 40;
         const speedAtBoundary = Math.sqrt(bird.vx * bird.vx + bird.vy * bird.vy);
+        const bounceForce = 1.5; // Very strong bounce
 
         if (bird.x < margin) {
-          const pushForce = 0.8 + (margin - bird.x) * 0.02; // Much stronger, escalating force
-          bird.vx = Math.abs(bird.vx) + pushForce;
-          if (speedAtBoundary > 0) bird.vx = Math.max(bird.vx, speedAtBoundary * 1.2); // Boost momentum
+          // Complete velocity reversal + strong push away
+          bird.vx = Math.abs(bird.vx) * 1.5 + bounceForce; // Reverse and amplify
+          // Keep parallel component but reduce to prevent sliding
+          bird.vy *= 0.3;
         }
         if (bird.x > canvas.width - margin) {
-          const pushForce = 0.8 + (bird.x - (canvas.width - margin)) * 0.02;
-          bird.vx = -Math.abs(bird.vx) - pushForce;
-          if (speedAtBoundary > 0) bird.vx = Math.min(bird.vx, -speedAtBoundary * 1.2);
+          bird.vx = -Math.abs(bird.vx) * 1.5 - bounceForce;
+          bird.vy *= 0.3;
         }
         if (bird.y < margin) {
-          const pushForce = 0.8 + (margin - bird.y) * 0.02;
-          bird.vy = Math.abs(bird.vy) + pushForce;
-          if (speedAtBoundary > 0) bird.vy = Math.max(bird.vy, speedAtBoundary * 1.2);
+          bird.vy = Math.abs(bird.vy) * 1.5 + bounceForce;
+          bird.vx *= 0.3;
         }
         if (bird.y > canvas.height - margin) {
-          const pushForce = 0.8 + (bird.y - (canvas.height - margin)) * 0.02;
-          bird.vy = -Math.abs(bird.vy) - pushForce;
-          if (speedAtBoundary > 0) bird.vy = Math.min(bird.vy, -speedAtBoundary * 1.2);
+          bird.vy = -Math.abs(bird.vy) * 1.5 - bounceForce;
+          bird.vx *= 0.3;
         }
 
         // Limit speed and maintain stronger minimum momentum
