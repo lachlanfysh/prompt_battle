@@ -99,19 +99,52 @@ const FlockingBirds = ({ playerBoxes }) => {
           const dy = other.y - bird.y;
           const dist = Math.sqrt(dx * dx + dy * dy);
 
+          // Improved separation with minimum distance enforcement
+          const minDistance = bird.size + other.size + 8; // Minimum gap based on bird sizes
+          const separationDistance = Math.max(minDistance, 30); // At least 30px separation
+
+          if (dist < separationDistance) {
+            const force = (separationDistance - dist) / separationDistance;
+            repelX -= (dx / dist) * force * 2;
+            repelY -= (dy / dist) * force * 2;
+          }
+
           // Reflocking behavior - birds can switch flocks when they collide
-          if (other.flock !== bird.flock && dist < 15 && bird.reflockCooldown <= 0) {
-            // Small chance of joining the other bird's flock
-            if (Math.random() < 0.03) { // 3% chance per frame when very close
+          if (other.flock !== bird.flock && dist < 20 && bird.reflockCooldown <= 0) {
+            // Count birds in each flock first
+            const birdFlockSize = birds.filter(b => b.flock === bird.flock).length;
+            const otherFlockSize = birds.filter(b => b.flock === other.flock).length;
+
+            // Higher chance to join smaller flocks, lower chance to join large ones
+            let joinChance = 0.02; // Base 2%
+            if (otherFlockSize < birdFlockSize) joinChance = 0.04; // 4% to join smaller flock
+            if (otherFlockSize > 25) joinChance = 0.005; // 0.5% to join large flocks
+
+            if (Math.random() < joinChance) {
               bird.flock = other.flock;
-              bird.reflockCooldown = 300; // 5 second cooldown at 60fps
+              bird.reflockCooldown = 300; // 5 second cooldown
             }
           }
 
-          // Separation applies to all birds (avoid crowding)
-          if (dist < 25) { // Too close, repel from any bird
-            repelX -= dx / dist;
-            repelY -= dy / dist;
+          // Flock splitting - birds break away from large flocks
+          if (bird.reflockCooldown <= 0) {
+            const currentFlockSize = birds.filter(b => b.flock === bird.flock).length;
+            if (currentFlockSize > 30) {
+              // Higher chance to break away from very large flocks
+              if (Math.random() < 0.008) { // 0.8% chance per frame
+                // Find an unused flock number or create new one
+                const usedFlocks = new Set(birds.map(b => b.flock));
+                let newFlock = bird.flock;
+                for (let i = 0; i < 10; i++) {
+                  if (!usedFlocks.has(i)) {
+                    newFlock = i;
+                    break;
+                  }
+                }
+                bird.flock = newFlock;
+                bird.reflockCooldown = 600; // Longer cooldown for splitting
+              }
+            }
           }
 
           // Cohesion and alignment only within same flock
@@ -172,9 +205,9 @@ const FlockingBirds = ({ playerBoxes }) => {
             break;
         }
 
-        // Separation - reduced
-        bird.vx += repelX * 0.05;
-        bird.vy += repelY * 0.05;
+        // Separation - stronger to maintain minimum distances
+        bird.vx += repelX * 0.15;
+        bird.vy += repelY * 0.15;
 
         // Strong boundary conditions - hard walls
         const margin = 30;
