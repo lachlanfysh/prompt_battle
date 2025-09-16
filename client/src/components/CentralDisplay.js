@@ -161,31 +161,53 @@ const FlockingBirds = ({ playerBoxes }) => {
             avgVy += other.vy;
             neighbors++;
 
-            // V-formation behavior: prefer positions behind and to the side of leaders
+            // Adaptive formation behavior based on flock size
             if (other.leadership > bird.leadership && dist < 80) {
+              const flockMates = birds.filter(b => b.flock === bird.flock);
+              const flockSize = flockMates.length;
+
               // Calculate relative position to the leader
               const leaderAngle = Math.atan2(other.vy, other.vx);
               const relativeAngle = Math.atan2(dy, dx) - leaderAngle;
 
-              // Prefer 45-degree angles behind the leader (V-formation)
-              const idealAngle1 = Math.PI * 0.75; // 135 degrees
-              const idealAngle2 = Math.PI * 1.25; // 225 degrees
+              let formationStrength = 0.0005; // Much weaker base formation force
 
-              let angleDiff1 = Math.abs(relativeAngle - idealAngle1);
-              let angleDiff2 = Math.abs(relativeAngle - idealAngle2);
-              if (angleDiff1 > Math.PI) angleDiff1 = 2 * Math.PI - angleDiff1;
-              if (angleDiff2 > Math.PI) angleDiff2 = 2 * Math.PI - angleDiff2;
+              if (flockSize <= 8) {
+                // Small flocks: prefer echelon/line formation (side-by-side offset)
+                const echelonAngle = Math.PI * 0.5; // 90 degrees (side)
+                const echelonAngle2 = Math.PI * 1.5; // 270 degrees (other side)
 
-              const minAngleDiff = Math.min(angleDiff1, angleDiff2);
-              if (minAngleDiff < Math.PI / 3) { // Within 60 degrees of ideal V position
-                // Aerodynamic benefit - less energy needed when in formation
-                aerodynamicBoost += (1 - minAngleDiff / (Math.PI / 3)) * 0.02;
+                let angleDiff1 = Math.abs(relativeAngle - echelonAngle);
+                let angleDiff2 = Math.abs(relativeAngle - echelonAngle2);
+                if (angleDiff1 > Math.PI) angleDiff1 = 2 * Math.PI - angleDiff1;
+                if (angleDiff2 > Math.PI) angleDiff2 = 2 * Math.PI - angleDiff2;
 
-                // Slight attraction to maintain V position
-                const targetAngle = angleDiff1 < angleDiff2 ? idealAngle1 : idealAngle2;
-                const adjustAngle = leaderAngle + targetAngle;
-                vFormationX += Math.cos(adjustAngle) * 0.001;
-                vFormationY += Math.sin(adjustAngle) * 0.001;
+                const minAngleDiff = Math.min(angleDiff1, angleDiff2);
+                if (minAngleDiff < Math.PI / 2) { // Echelon formation
+                  aerodynamicBoost += (1 - minAngleDiff / (Math.PI / 2)) * 0.015;
+                  const targetAngle = angleDiff1 < angleDiff2 ? echelonAngle : echelonAngle2;
+                  const adjustAngle = leaderAngle + targetAngle;
+                  vFormationX += Math.cos(adjustAngle) * formationStrength;
+                  vFormationY += Math.sin(adjustAngle) * formationStrength;
+                }
+              } else {
+                // Larger flocks: V-formation but only when beneficial
+                const idealAngle1 = Math.PI * 0.75; // 135 degrees
+                const idealAngle2 = Math.PI * 1.25; // 225 degrees
+
+                let angleDiff1 = Math.abs(relativeAngle - idealAngle1);
+                let angleDiff2 = Math.abs(relativeAngle - idealAngle2);
+                if (angleDiff1 > Math.PI) angleDiff1 = 2 * Math.PI - angleDiff1;
+                if (angleDiff2 > Math.PI) angleDiff2 = 2 * Math.PI - angleDiff2;
+
+                const minAngleDiff = Math.min(angleDiff1, angleDiff2);
+                if (minAngleDiff < Math.PI / 3) { // V-formation
+                  aerodynamicBoost += (1 - minAngleDiff / (Math.PI / 3)) * 0.02;
+                  const targetAngle = angleDiff1 < angleDiff2 ? idealAngle1 : idealAngle2;
+                  const adjustAngle = leaderAngle + targetAngle;
+                  vFormationX += Math.cos(adjustAngle) * formationStrength;
+                  vFormationY += Math.sin(adjustAngle) * formationStrength;
+                }
               }
             }
           }
@@ -253,21 +275,43 @@ const FlockingBirds = ({ playerBoxes }) => {
         bird.vx += (Math.sin(bird.x * 0.02 + Date.now() * 0.0001) * turbulence);
         bird.vy += (Math.cos(bird.y * 0.015 + Date.now() * 0.0001) * turbulence);
 
-        // Strong boundary conditions - hard walls
-        const margin = 30;
-        const pushStrength = 0.3;
+        // Improved boundary conditions - maintain momentum with reflection
+        const margin = 40;
+        const currentSpeed = Math.sqrt(bird.vx * bird.vx + bird.vy * bird.vy);
 
-        if (bird.x < margin) bird.vx += pushStrength;
-        if (bird.x > canvas.width - margin) bird.vx -= pushStrength;
-        if (bird.y < margin) bird.vy += pushStrength;
-        if (bird.y > canvas.height - margin) bird.vy -= pushStrength;
+        if (bird.x < margin) {
+          bird.vx = Math.abs(bird.vx) + 0.2; // Reflect and boost
+          if (currentSpeed > 0) bird.vx = Math.max(bird.vx, currentSpeed * 0.8); // Maintain momentum
+        }
+        if (bird.x > canvas.width - margin) {
+          bird.vx = -Math.abs(bird.vx) - 0.2; // Reflect and boost
+          if (currentSpeed > 0) bird.vx = Math.min(bird.vx, -currentSpeed * 0.8); // Maintain momentum
+        }
+        if (bird.y < margin) {
+          bird.vy = Math.abs(bird.vy) + 0.2; // Reflect and boost
+          if (currentSpeed > 0) bird.vy = Math.max(bird.vy, currentSpeed * 0.8); // Maintain momentum
+        }
+        if (bird.y > canvas.height - margin) {
+          bird.vy = -Math.abs(bird.vy) - 0.2; // Reflect and boost
+          if (currentSpeed > 0) bird.vy = Math.min(bird.vy, -currentSpeed * 0.8); // Maintain momentum
+        }
 
-        // Limit speed to slower maximum
+        // Limit speed and maintain minimum momentum
         const speed = Math.sqrt(bird.vx * bird.vx + bird.vy * bird.vy);
-        const maxSpeed = 1.0; // Much slower
+        const maxSpeed = 1.2; // Slightly faster
+        const minSpeed = 0.3; // Prevent getting stuck
+
         if (speed > maxSpeed) {
           bird.vx = (bird.vx / speed) * maxSpeed;
           bird.vy = (bird.vy / speed) * maxSpeed;
+        } else if (speed < minSpeed && speed > 0) {
+          // Boost slow birds to maintain momentum
+          bird.vx = (bird.vx / speed) * minSpeed;
+          bird.vy = (bird.vy / speed) * minSpeed;
+        } else if (speed === 0) {
+          // Give stuck birds a random kick
+          bird.vx = (Math.random() - 0.5) * minSpeed;
+          bird.vy = (Math.random() - 0.5) * minSpeed;
         }
 
         // Update position
