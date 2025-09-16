@@ -282,17 +282,25 @@ io.on('connection', (socket) => {
   // Handle disconnection
   socket.on('disconnect', () => {
     console.log(`Client disconnected: ${socket.id}`);
-    
+
     // Find and remove player
     for (const playerId in gameState.players) {
       if (gameState.players[playerId].socketId === socket.id) {
-        delete gameState.players[playerId];
-        delete gameState.prompts[playerId];
-        delete gameState.generatedImages[playerId];
+        // During judging phase, preserve generated images to prevent disrupting results
+        if (gameState.phase === 'judging') {
+          console.log(`⚖️ Player ${playerId} disconnected during judging - preserving their image`);
+          // Remove player but keep their generated image and prompt for judging
+          delete gameState.players[playerId];
+        } else {
+          // In other phases, clean up completely
+          delete gameState.players[playerId];
+          delete gameState.prompts[playerId];
+          delete gameState.generatedImages[playerId];
+        }
         break;
       }
     }
-    
+
     io.emit('game-state', gameState);
   });
 });
