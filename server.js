@@ -264,6 +264,12 @@ io.on('connection', (socket) => {
 
   // GPT-based image scoring
   socket.on('request-gpt-scoring', async () => {
+    console.log('🤖 GPT scoring requested - Debug info:');
+    console.log('  Phase:', gameState.phase);
+    console.log('  Target:', gameState.target ? 'exists' : 'missing');
+    console.log('  Generated images count:', Object.keys(gameState.generatedImages).length);
+    console.log('  Generated images:', Object.keys(gameState.generatedImages));
+
     if (gameState.phase !== 'judging' || !gameState.target || Object.keys(gameState.generatedImages).length < 2) {
       socket.emit('gpt-scoring-error', 'Cannot score images at this time');
       return;
@@ -289,8 +295,10 @@ io.on('connection', (socket) => {
         // During judging phase, preserve generated images to prevent disrupting results
         if (gameState.phase === 'judging') {
           console.log(`⚖️ Player ${playerId} disconnected during judging - preserving their image`);
+          console.log(`  Before cleanup - images:`, Object.keys(gameState.generatedImages));
           // Remove player but keep their generated image and prompt for judging
           delete gameState.players[playerId];
+          console.log(`  After cleanup - images:`, Object.keys(gameState.generatedImages));
         } else {
           // In other phases, clean up completely
           delete gameState.players[playerId];
