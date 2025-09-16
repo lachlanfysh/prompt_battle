@@ -37,22 +37,35 @@ const FlockingBirds = ({ playerBoxes }) => {
     const ctx = canvas.getContext('2d');
     const birds = birdsRef.current;
 
-    // Initialize birds
+    // Initialize birds in multiple flocks
     if (birds.length === 0) {
-      for (let i = 0; i < 15; i++) {
-        birds.push({
-          x: Math.random() * canvas.width,
-          y: Math.random() * canvas.height,
-          vx: (Math.random() - 0.5) * 2,
-          vy: (Math.random() - 0.5) * 2,
-          size: Math.random() * 3 + 2
-        });
+      const numFlocks = 4;
+      const birdsPerFlock = 8;
+
+      for (let flock = 0; flock < numFlocks; flock++) {
+        // Create flock center
+        const flockCenterX = (Math.random() * 0.6 + 0.2) * canvas.width;
+        const flockCenterY = (Math.random() * 0.6 + 0.2) * canvas.height;
+
+        for (let i = 0; i < birdsPerFlock; i++) {
+          birds.push({
+            x: flockCenterX + (Math.random() - 0.5) * 100,
+            y: flockCenterY + (Math.random() - 0.5) * 100,
+            vx: (Math.random() - 0.5) * 0.8, // Slower initial speed
+            vy: (Math.random() - 0.5) * 0.8,
+            size: Math.random() * 2 + 3,
+            flock: flock
+          });
+        }
       }
     }
 
     const resizeCanvas = () => {
-      canvas.width = canvas.offsetWidth;
-      canvas.height = canvas.offsetHeight;
+      const parent = canvas.parentElement;
+      if (parent) {
+        canvas.width = parent.offsetWidth;
+        canvas.height = parent.offsetHeight;
+      }
     };
 
     resizeCanvas();
@@ -103,37 +116,46 @@ const FlockingBirds = ({ playerBoxes }) => {
           }
         });
 
-        // Apply flocking rules
+        // Apply flocking rules with reduced strength
         if (neighbors > 0) {
-          // Alignment
-          bird.vx += (avgVx / neighbors - bird.vx) * 0.03;
-          bird.vy += (avgVy / neighbors - bird.vy) * 0.03;
+          // Alignment - slower
+          bird.vx += (avgVx / neighbors - bird.vx) * 0.015;
+          bird.vy += (avgVy / neighbors - bird.vy) * 0.015;
 
-          // Cohesion
-          bird.vx += ((avgX / neighbors) - bird.x) * 0.005;
-          bird.vy += ((avgY / neighbors) - bird.y) * 0.005;
+          // Cohesion - slower
+          bird.vx += ((avgX / neighbors) - bird.x) * 0.002;
+          bird.vy += ((avgY / neighbors) - bird.y) * 0.002;
         }
 
-        // Separation
-        bird.vx += repelX * 0.1;
-        bird.vy += repelY * 0.1;
+        // Separation - reduced
+        bird.vx += repelX * 0.05;
+        bird.vy += repelY * 0.05;
 
-        // Boundary conditions
-        if (bird.x < 20) bird.vx += 0.1;
-        if (bird.x > canvas.width - 20) bird.vx -= 0.1;
-        if (bird.y < 20) bird.vy += 0.1;
-        if (bird.y > canvas.height - 20) bird.vy -= 0.1;
+        // Strong boundary conditions - hard walls
+        const margin = 30;
+        const pushStrength = 0.3;
 
-        // Limit speed
+        if (bird.x < margin) bird.vx += pushStrength;
+        if (bird.x > canvas.width - margin) bird.vx -= pushStrength;
+        if (bird.y < margin) bird.vy += pushStrength;
+        if (bird.y > canvas.height - margin) bird.vy -= pushStrength;
+
+        // Limit speed to slower maximum
         const speed = Math.sqrt(bird.vx * bird.vx + bird.vy * bird.vy);
-        if (speed > 2) {
-          bird.vx = (bird.vx / speed) * 2;
-          bird.vy = (bird.vy / speed) * 2;
+        const maxSpeed = 1.0; // Much slower
+        if (speed > maxSpeed) {
+          bird.vx = (bird.vx / speed) * maxSpeed;
+          bird.vy = (bird.vy / speed) * maxSpeed;
         }
 
         // Update position
         bird.x += bird.vx;
         bird.y += bird.vy;
+
+        // Hard boundary enforcement (keep birds strictly inside)
+        const buffer = 10;
+        bird.x = Math.max(buffer, Math.min(canvas.width - buffer, bird.x));
+        bird.y = Math.max(buffer, Math.min(canvas.height - buffer, bird.y));
 
         // Draw bird
         ctx.save();
@@ -166,7 +188,7 @@ const FlockingBirds = ({ playerBoxes }) => {
   return (
     <canvas
       ref={canvasRef}
-      className="absolute inset-0 pointer-events-none"
+      className="absolute inset-0 pointer-events-none w-full h-full"
       style={{ zIndex: 1 }}
     />
   );
