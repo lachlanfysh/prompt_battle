@@ -55,6 +55,24 @@ app.get('/api/challenge-images', (req, res) => {
 // Health check endpoint
 app.get('/api/health', async (req, res) => {
   const openaiHealth = await checkOpenAIHealth();
+  const provider = process.env.OPENAI_PROVIDER || 'openai';
+
+  // Determine provider status
+  let providerInfo = {
+    type: provider,
+    configured: openaiHealth,
+    name: provider === 'azure' ? 'Azure OpenAI' : 'OpenAI'
+  };
+
+  if (provider === 'azure') {
+    providerInfo.details = {
+      endpoint: process.env.AZURE_OPENAI_ENDPOINT ? '✓ Set' : '✗ Missing',
+      dalleDeployment: process.env.AZURE_OPENAI_DEPLOYMENT_DALLE || 'dall-e-3',
+      gptDeployment: process.env.AZURE_OPENAI_DEPLOYMENT_GPT || 'gpt-4o',
+      apiVersion: process.env.AZURE_OPENAI_API_VERSION || '2024-02-01'
+    };
+  }
+
   res.json({
     status: 'healthy',
     timestamp: new Date().toISOString(),
@@ -66,7 +84,8 @@ app.get('/api/health', async (req, res) => {
       phase: gameState.phase,
       connectedPlayers: Object.keys(gameState.players).length,
       hasTarget: !!gameState.target
-    }
+    },
+    provider: providerInfo
   });
 });
 

@@ -34,6 +34,7 @@ export default function AdminPanel() {
   const [targetType, setTargetType] = useState('text'); // 'text' or 'image'
   const [selectedImage, setSelectedImage] = useState(null);
   const [randomTopicEnabled, setRandomTopicEnabled] = useState(false);
+  const [healthStatus, setHealthStatus] = useState(null);
 
   const presetTargets = [
     // Corporate & Business Humor (accessible)
@@ -87,6 +88,25 @@ export default function AdminPanel() {
       .then(res => res.json())
       .then(data => setChallengeImages(data.images || []))
       .catch(err => console.error('Failed to fetch challenge images:', err));
+  }, []);
+
+  // Fetch health status
+  const fetchHealthStatus = async () => {
+    try {
+      const response = await fetch('/api/health');
+      const data = await response.json();
+      setHealthStatus(data);
+    } catch (error) {
+      console.error('Failed to fetch health status:', error);
+      setHealthStatus(null);
+    }
+  };
+
+  // Fetch health status on component mount and periodically
+  useEffect(() => {
+    fetchHealthStatus();
+    const interval = setInterval(fetchHealthStatus, 30000); // Update every 30 seconds
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -488,15 +508,154 @@ export default function AdminPanel() {
           )}
         </div>
 
-        {/* Stable Diffusion Status */}
+        {/* API Connectivity Status */}
         <div className="bg-gray-800 rounded-lg p-6 mt-8">
-          <h2 className="text-xl font-bold mb-4">Stable Diffusion Status</h2>
-          <div className="text-gray-300">
-            <p className="mb-2">🔗 Expected endpoint: http://localhost:7860</p>
-            <p className="text-sm">
-              Make sure Automatic1111 WebUI is running with <code className="bg-gray-700 px-2 py-1 rounded">--api --listen</code> flags
-            </p>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-bold">API Connectivity Status</h2>
+            <button
+              onClick={fetchHealthStatus}
+              className="text-blue-400 hover:text-blue-300 text-sm underline"
+            >
+              Refresh Status
+            </button>
           </div>
+
+          {healthStatus ? (
+            <div className="space-y-4">
+              {/* Overall Status */}
+              <div className="flex items-center space-x-3">
+                <div className={`w-4 h-4 rounded-full ${
+                  healthStatus.status === 'healthy' ? 'bg-green-500' : 'bg-red-500'
+                } animate-pulse`}></div>
+                <span className="text-lg font-semibold">
+                  System Status: {healthStatus.status === 'healthy' ? 'Healthy' : 'Issues Detected'}
+                </span>
+                <span className="text-sm text-gray-400">
+                  Last updated: {new Date(healthStatus.timestamp).toLocaleTimeString()}
+                </span>
+              </div>
+
+              {/* Service Status */}
+              <div>
+                <h3 className="font-semibold mb-3 text-gray-300">Service Status:</h3>
+                <div className="grid md:grid-cols-2 gap-4">
+                  {Object.entries(healthStatus.services || {}).map(([service, status]) => (
+                    <div key={service} className="flex items-center justify-between p-3 bg-gray-700 rounded-lg">
+                      <div className="flex items-center space-x-3">
+                        <div className={`w-3 h-3 rounded-full ${
+                          status === 'healthy' ? 'bg-green-500' :
+                          status === 'unavailable' ? 'bg-yellow-500' : 'bg-red-500'
+                        }`}></div>
+                        <span className="font-medium">
+                          {service === 'prompt-battle-server' ? 'Server' :
+                           service === 'openai-dalle' ? 'Image Generation' : service}
+                        </span>
+                      </div>
+                      <span className={`text-sm font-medium capitalize ${
+                        status === 'healthy' ? 'text-green-400' :
+                        status === 'unavailable' ? 'text-yellow-400' : 'text-red-400'
+                      }`}>
+                        {status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Game State Info */}
+              <div>
+                <h3 className="font-semibold mb-3 text-gray-300">Current State:</h3>
+                <div className="grid md:grid-cols-3 gap-4">
+                  <div className="p-3 bg-gray-700 rounded-lg">
+                    <div className="text-sm text-gray-400">Phase</div>
+                    <div className="font-semibold capitalize">{healthStatus.gameState?.phase || 'Unknown'}</div>
+                  </div>
+                  <div className="p-3 bg-gray-700 rounded-lg">
+                    <div className="text-sm text-gray-400">Connected Players</div>
+                    <div className="font-semibold">{healthStatus.gameState?.connectedPlayers || 0}/2</div>
+                  </div>
+                  <div className="p-3 bg-gray-700 rounded-lg">
+                    <div className="text-sm text-gray-400">Target Set</div>
+                    <div className="font-semibold">
+                      {healthStatus.gameState?.hasTarget ?
+                        <span className="text-green-400">✓ Yes</span> :
+                        <span className="text-gray-400">✗ No</span>
+                      }
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Provider Information */}
+              <div>
+                <h3 className="font-semibold mb-3 text-gray-300">AI Provider Configuration:</h3>
+                <div className="p-4 bg-gray-700 rounded-lg space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-400">Provider:</span>
+                    <div className="flex items-center space-x-2">
+                      <div className={`w-3 h-3 rounded-full ${
+                        healthStatus.provider?.configured ? 'bg-green-500' : 'bg-red-500'
+                      }`}></div>
+                      <span className="font-mono font-medium">
+                        {healthStatus.provider?.name || 'Unknown'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {healthStatus.provider?.details && (
+                    <div className="space-y-2">
+                      <div className="text-xs text-gray-500 border-t border-gray-600 pt-2">
+                        Azure Configuration Details:
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Endpoint:</span>
+                          <span className="font-mono">{healthStatus.provider.details.endpoint}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">API Version:</span>
+                          <span className="font-mono">{healthStatus.provider.details.apiVersion}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">DALL-E Model:</span>
+                          <span className="font-mono">{healthStatus.provider.details.dalleDeployment}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">GPT Model:</span>
+                          <span className="font-mono">{healthStatus.provider.details.gptDeployment}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="text-sm">
+                    {healthStatus.services?.['openai-dalle'] === 'unavailable' && (
+                      <div className="mt-3 p-3 bg-yellow-900/20 border border-yellow-500/20 rounded text-yellow-200">
+                        <div className="font-medium mb-1">⚠️ AI Services Not Available</div>
+                        <div className="text-xs">
+                          Configure {healthStatus.provider?.type === 'azure' ? 'Azure OpenAI' : 'OpenAI API'} credentials in your .env file.
+                          <br />See openai-setup.md for detailed setup instructions.
+                        </div>
+                      </div>
+                    )}
+                    {healthStatus.services?.['openai-dalle'] === 'healthy' && (
+                      <div className="mt-3 p-3 bg-green-900/20 border border-green-500/20 rounded text-green-200">
+                        <div className="font-medium mb-1">✅ AI Services Ready</div>
+                        <div className="text-xs">
+                          {healthStatus.provider?.name} is configured and ready for image generation and analysis.
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center space-x-3 text-gray-400">
+              <div className="w-4 h-4 rounded-full bg-gray-500 animate-pulse"></div>
+              <span>Loading system status...</span>
+            </div>
+          )}
         </div>
       </div>
     </div>
