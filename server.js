@@ -133,10 +133,35 @@ app.get('/api/proxy-image', async (req, res) => {
   }
 });
 
+// Dynamic OpenAI client initialization
+function createOpenAIClient() {
+  const provider = process.env.OPENAI_PROVIDER || 'openai';
+
+  if (provider === 'azure') {
+    if (!process.env.AZURE_OPENAI_API_KEY || !process.env.AZURE_OPENAI_ENDPOINT) {
+      console.log('⚠️  Azure OpenAI configuration incomplete. Required: AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT');
+      return null;
+    }
+
+    console.log('🔄 Initializing Azure OpenAI client');
+    return new OpenAI({
+      apiKey: process.env.AZURE_OPENAI_API_KEY,
+      baseURL: `${process.env.AZURE_OPENAI_ENDPOINT.replace(/\/$/, '')}/openai/deployments`,
+      defaultQuery: { 'api-version': process.env.AZURE_OPENAI_API_VERSION || '2024-02-01' },
+      defaultHeaders: {
+        'api-key': process.env.AZURE_OPENAI_API_KEY
+      }
+    });
+  } else {
+    console.log('🔄 Initializing OpenAI client');
+    return new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY
+    });
+  }
+}
+
 // Initialize OpenAI client
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
+const openai = createOpenAIClient();
 
 // Game state management
 let gameState = {
@@ -360,12 +385,38 @@ async function endBattle() {
 let openaiHealthy = true;
 
 async function checkOpenAIHealth() {
-  if (!process.env.OPENAI_API_KEY) {
-    console.log('⚠️  No OpenAI API key found. Set OPENAI_API_KEY in environment.');
+  const provider = process.env.OPENAI_PROVIDER || 'openai';
+
+  if (provider === 'azure') {
+    if (!process.env.AZURE_OPENAI_API_KEY) {
+      console.log('⚠️  No Azure OpenAI API key found. Set AZURE_OPENAI_API_KEY in environment.');
+      openaiHealthy = false;
+      return false;
+    }
+    if (!process.env.AZURE_OPENAI_ENDPOINT) {
+      console.log('⚠️  No Azure OpenAI endpoint found. Set AZURE_OPENAI_ENDPOINT in environment.');
+      openaiHealthy = false;
+      return false;
+    }
+    if (!process.env.AZURE_OPENAI_DEPLOYMENT_DALLE) {
+      console.log('⚠️  No Azure DALL-E deployment name found. Set AZURE_OPENAI_DEPLOYMENT_DALLE in environment.');
+      openaiHealthy = false;
+      return false;
+    }
+  } else {
+    if (!process.env.OPENAI_API_KEY) {
+      console.log('⚠️  No OpenAI API key found. Set OPENAI_API_KEY in environment.');
+      openaiHealthy = false;
+      return false;
+    }
+  }
+
+  if (!openai) {
+    console.log('⚠️  OpenAI client initialization failed.');
     openaiHealthy = false;
     return false;
   }
-  
+
   openaiHealthy = true;
   return true;
 }
@@ -382,15 +433,32 @@ async function generateImage(prompt) {
   
   try {
     console.log(`🎨 Generating image with DALL-E for prompt: "${prompt}"`);
-    
-    const response = await openai.images.generate({
-      model: "dall-e-3",
+
+    const provider = process.env.OPENAI_PROVIDER || 'openai';
+    const requestParams = {
       prompt: prompt,
       n: 1,
       size: "1024x1024",
       quality: "standard",
       style: "vivid"
-    });
+    };
+
+    let response;
+
+    // For Azure, we need to use the deployment name instead of model
+    if (provider === 'azure') {
+      // Azure uses deployment-specific endpoints, model is implicit
+      const deploymentName = process.env.AZURE_OPENAI_DEPLOYMENT_DALLE || 'dall-e-3';
+      console.log(`🔄 Using Azure deployment: ${deploymentName}`);
+
+      // Override the baseURL for this specific call to include deployment
+      response = await openai.images.generate(requestParams, {
+        baseURL: `${process.env.AZURE_OPENAI_ENDPOINT.replace(/\/$/, '')}/openai/deployments/${deploymentName}`
+      });
+    } else {
+      requestParams.model = "dall-e-3";
+      response = await openai.images.generate(requestParams);
+    }
     
     if (response.data && response.data[0] && response.data[0].url) {
       const imageUrl = response.data[0].url;
@@ -528,8 +596,8 @@ Be specific about what makes the winning image better suited to the prompt.`;
 
     console.log('🔍 Sending images to GPT-4 Vision for analysis...');
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+    const provider = process.env.OPENAI_PROVIDER || 'openai';
+    const requestParams = {
       messages: [
         {
           role: "user",
@@ -555,7 +623,21 @@ Be specific about what makes the winning image better suited to the prompt.`;
         }
       ],
       max_tokens: 500
-    });
+    };
+
+    let response;
+
+    if (provider === 'azure') {
+      const deploymentName = process.env.AZURE_OPENAI_DEPLOYMENT_GPT || 'gpt-4o';
+      console.log(`🔄 Using Azure GPT deployment: ${deploymentName}`);
+
+      response = await openai.chat.completions.create(requestParams, {
+        baseURL: `${process.env.AZURE_OPENAI_ENDPOINT.replace(/\/$/, '')}/openai/deployments/${deploymentName}`
+      });
+    } else {
+      requestParams.model = "gpt-4o";
+      response = await openai.chat.completions.create(requestParams);
+    }
 
     const analysisText = response.choices[0].message.content;
     console.log('✅ GPT analysis completed');
