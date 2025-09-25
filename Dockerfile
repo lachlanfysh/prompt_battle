@@ -1,22 +1,61 @@
-# Use Node.js 18 LTS
-FROM node:18-alpine
+# Multi-stage build to optimize image size
+# Stage 1: Build the React client
+FROM node:18-alpine AS client-builder
 
-# Set working directory
-WORKDIR /app
+WORKDIR /app/client
 
-# Copy package files
-COPY package*.json ./
-COPY client/package*.json ./client/
+# Copy client package files
+COPY client/package*.json ./
 
-# Install dependencies
-RUN npm install --production=false
-RUN cd client && npm install --production=false
+# Install client dependencies
+RUN npm ci --only=production=false --silent
 
-# Copy source code
-COPY . .
+# Copy client source
+COPY client/ ./
 
 # Build the client
-RUN cd client && npm run build
+RUN npm run build
+
+# Stage 2: Build the server
+FROM node:18-alpine AS server-builder
+
+WORKDIR /app
+
+# Copy server package files
+COPY package*.json ./
+
+# Install server dependencies (including dev dependencies for now)
+RUN npm ci --only=production=false --silent
+
+# Copy server source
+COPY . ./
+
+# Copy built client from previous stage
+COPY --from=client-builder /app/client/build ./client/build
+
+# Stage 3: Production runtime
+FROM node:18-alpine AS production
+
+WORKDIR /app
+
+# Copy server package files
+COPY package*.json ./
+
+# Install only production dependencies
+RUN npm ci --only=production --silent && npm cache clean --force
+
+# Copy built application from server-builder
+COPY --from=server-builder /app/server.js ./
+COPY --from=server-builder /app/client/build ./client/build
+
+# Create non-root user for security
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001
+
+# Create generated_images directory with proper permissions
+RUN mkdir -p generated_images && chown nodejs:nodejs generated_images
+
+USER nodejs
 
 # Expose port
 EXPOSE 3001
