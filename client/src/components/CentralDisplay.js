@@ -432,6 +432,7 @@ export default function CentralDisplay() {
   const [scoringLoading, setScoringLoading] = useState(false);
   const waitingContainerRef = useRef(null);
   const [playerBoxes, setPlayerBoxes] = useState([]);
+  const previousPhaseRef = useRef();
   
   // Update player box positions for flocking birds
   useEffect(() => {
@@ -503,6 +504,8 @@ export default function CentralDisplay() {
       setTimer(duration);
       setPrompts({});
       setImages({});
+      setGptScoring(null);
+      setScoringLoading(false);
     });
 
     newSocket.on('timer-update', (timeLeft) => {
@@ -545,6 +548,22 @@ export default function CentralDisplay() {
       newSocket.close();
     };
   }, []);
+
+  useEffect(() => {
+    const previousPhase = previousPhaseRef.current;
+    const currentPhase = gameState?.phase;
+
+    if (currentPhase && currentPhase !== previousPhase) {
+      if (currentPhase === 'ready' || currentPhase === 'waiting') {
+        setPrompts({});
+        setImages({});
+        setGptScoring(null);
+        setScoringLoading(false);
+      }
+    }
+
+    previousPhaseRef.current = currentPhase;
+  }, [gameState?.phase]);
   
   // Generate QR code for next player when someone wins (but only once per game)
   useEffect(() => {

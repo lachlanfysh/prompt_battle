@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import io from 'socket.io-client';
 
 // Dynamic socket URL that works for both local and network access
@@ -31,6 +31,7 @@ export default function PlayerInterface({ playerId }) {
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState(null);
   const [timer, setTimer] = useState(0);
+  const previousPhaseRef = useRef();
 
   useEffect(() => {
     const socketURL = getSocketURL();
@@ -59,6 +60,7 @@ export default function PlayerInterface({ playerId }) {
 
     newSocket.on('battle-started', ({ duration }) => {
       setTimer(duration);
+      setPrompt('');
     });
 
     newSocket.on('timer-update', (timeLeft) => {
@@ -83,6 +85,19 @@ export default function PlayerInterface({ playerId }) {
       newSocket.close();
     };
   }, [playerId]);
+
+  useEffect(() => {
+    const previousPhase = previousPhaseRef.current;
+    const currentPhase = gameState?.phase;
+
+    if (currentPhase && currentPhase !== previousPhase) {
+      if (currentPhase === 'ready' || currentPhase === 'waiting') {
+        setPrompt('');
+      }
+    }
+
+    previousPhaseRef.current = currentPhase;
+  }, [gameState?.phase]);
 
   const handlePromptChange = useCallback((e) => {
     const value = e.target.value;

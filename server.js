@@ -253,6 +253,18 @@ io.on('connection', (socket) => {
     } else {
       gameState.target = target;
     }
+
+    // Clear out previous round data so the new round starts fresh
+    Object.keys(gameState.players).forEach(playerId => {
+      if (gameState.players[playerId]) {
+        gameState.players[playerId].ready = false;
+      }
+    });
+    gameState.prompts = {};
+    gameState.generatedImages = {};
+    gameState.winner = null;
+    gameState.timer = 0;
+
     gameState.phase = 'ready';
     io.emit('game-state', gameState);
   });
