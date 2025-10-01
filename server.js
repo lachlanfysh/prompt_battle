@@ -614,21 +614,21 @@ async function analyzeImagesWithGPT(target, generatedImages) {
     // Determine target content based on type
     const targetContent = typeof target === 'object' ? target.content : target;
 
-    const analysisPrompt = `I need you to analyze these two AI-generated images and determine which one better fulfills the prompt: "${targetContent}"
+    const analysisPrompt = `Serve up a confident, playful critique of these two AI-generated images for the prompt: "${targetContent}". Keep the tone witty, a little dramatic, and full of good-natured sass.
 
-Please evaluate based on:
+Judge them based on:
 1. How well each image matches the specific prompt
 2. Creative interpretation and execution
 3. Visual quality and composition
 4. Overall effectiveness in conveying the intended concept
 
-Provide your analysis in this format:
+Deliver your feedback in this exact format (feel free to add flair to the wording while keeping the structure):
 WINNER: Player [1 or 2]
 ANALYSIS: [Detailed explanation of why this image wins, about 2-3 sentences]
 PLAYER 1: [Brief feedback on Player 1's image strengths/weaknesses]
 PLAYER 2: [Brief feedback on Player 2's image strengths/weaknesses]
 
-Be specific about what makes the winning image better suited to the prompt.`;
+Make it crystal clear why the winner snatched the crown and celebrate their standout moments with bold, entertaining commentary.`;
 
     console.log('🔍 Sending images to GPT-4 Vision for analysis...');
 
