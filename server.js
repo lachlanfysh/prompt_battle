@@ -193,6 +193,8 @@ let gameState = {
   winner: null
 };
 
+let battleTimerInterval = null;
+
 // Socket.IO connection handling
 io.on('connection', (socket) => {
   console.log(`Client connected: ${socket.id}`);
@@ -256,28 +258,34 @@ io.on('connection', (socket) => {
   });
 
   socket.on('start-battle', (duration) => {
+    if (battleTimerInterval) {
+      clearInterval(battleTimerInterval);
+      battleTimerInterval = null;
+    }
+
     gameState.phase = 'battling';
     gameState.timer = duration;
     gameState.prompts = {};
     gameState.generatedImages = {};
     gameState.winner = null; // Clear previous winner
-    
+
     io.emit('battle-started', { duration });
     io.emit('game-state', gameState);
 
     // Timer countdown
-    const interval = setInterval(() => {
+    battleTimerInterval = setInterval(() => {
       gameState.timer -= 1;
       io.emit('timer-update', gameState.timer);
-      
+
       if (gameState.timer <= 0) {
-        clearInterval(interval);
+        clearBattleTimer();
         endBattle();
       }
     }, 1000);
   });
 
   socket.on('select-winner', (winnerId) => {
+    clearBattleTimer();
     gameState.winner = winnerId;
     gameState.phase = 'finished';
     io.emit('game-state', gameState);
@@ -285,6 +293,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('reset-game', () => {
+    clearBattleTimer();
     // Keep connected players but reset their ready status
     Object.keys(gameState.players).forEach(playerId => {
       if (gameState.players[playerId]) {
@@ -357,7 +366,15 @@ io.on('connection', (socket) => {
   });
 });
 
+function clearBattleTimer() {
+  if (battleTimerInterval) {
+    clearInterval(battleTimerInterval);
+    battleTimerInterval = null;
+  }
+}
+
 async function endBattle() {
+  clearBattleTimer();
   gameState.phase = 'generating';
   io.emit('game-state', gameState);
 
