@@ -3,9 +3,12 @@ import React, { useState, useEffect } from 'react';
 import { Play, RotateCcw, Settings, Monitor, User, ExternalLink, Clock, Target } from 'lucide-react';
 import io from 'socket.io-client';
 
-const SOCKET_URL = process.env.NODE_ENV === 'production' 
-  ? window.location.origin 
-  : 'http://localhost:3000';
+const getSocketURL = () => {
+  const protocol = window.location.protocol;
+  const hostname = window.location.hostname;
+  const port = process.env.NODE_ENV === 'production' ? window.location.port : '3001';
+  return `${protocol}//${hostname}:${port}`;
+};
 
 const SAMPLE_TARGETS = [
   "Create a majestic dragon soaring through a storm-filled sky",
@@ -28,11 +31,14 @@ export default function AdminPanel() {
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
-    const newSocket = io(SOCKET_URL);
-    
+    const socketURL = getSocketURL();
+    const newSocket = io(socketURL, {
+      transports: ['websocket', 'polling'],
+    });
+
     newSocket.on('connect', () => {
       setConnected(true);
-      newSocket.emit('get-state');
+      newSocket.emit('join-admin');
     });
 
     newSocket.on('disconnect', () => {
@@ -43,6 +49,10 @@ export default function AdminPanel() {
       setGameState(state);
     });
 
+    newSocket.on('timer-update', (timeLeft) => {
+      setGameState((prev) => (prev ? { ...prev, timer: timeLeft } : prev));
+    });
+
     setSocket(newSocket);
 
     return () => {
@@ -51,16 +61,17 @@ export default function AdminPanel() {
   }, []);
 
   const startBattle = () => {
-    if (socket && gameState?.state === 'waiting') {
-      socket.emit('start-battle', { target, duration });
+    if (socket && gameState?.phase === 'waiting') {
+      if (target?.trim()) {
+        socket.emit('set-target', target.trim());
+      }
+      socket.emit('start-battle', duration);
     }
   };
 
   const resetBattle = async () => {
-    try {
-      await fetch('/api/admin/reset', { method: 'POST' });
-    } catch (error) {
-      console.error('Failed to reset:', error);
+    if (socket) {
+      socket.emit('reset-game');
     }
   };
 
@@ -89,10 +100,10 @@ export default function AdminPanel() {
               <span>{connected ? 'Connected' : 'Disconnected'}</span>
             </div>
             <div className="text-gray-300">
-              Players: {gameState?.players?.length || 0}
+              Players: {Object.keys(gameState?.players || {}).length}
             </div>
             <div className="text-gray-300">
-              State: <span className="capitalize font-semibold">{gameState?.state || 'Unknown'}</span>
+              State: <span className="capitalize font-semibold">{gameState?.phase || 'Unknown'}</span>
             </div>
           </div>
         </div>
@@ -197,11 +208,11 @@ export default function AdminPanel() {
             <div className="space-y-4">
               <button
                 onClick={startBattle}
-                disabled={!connected || gameState?.state !== 'waiting'}
+                disabled={!connected || gameState?.phase !== 'waiting'}
                 className="w-full bg-green-600 hover:bg-green-500 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-4 px-6 rounded-lg flex items-center justify-center gap-3 transition-colors"
               >
                 <Play size={24} />
-                {gameState?.state === 'waiting' ? 'START BATTLE' : `Battle ${gameState?.state || 'Loading'}`}
+                {gameState?.phase === 'waiting' ? 'START BATTLE' : `Battle ${gameState?.phase || 'Loading'}`}
               </button>
               
               <button
@@ -214,11 +225,11 @@ export default function AdminPanel() {
               </button>
             </div>
 
-            {gameState?.state === 'writing' && (
+            {gameState?.phase === 'battling' && (
               <div className="mt-6 p-4 bg-blue-500/20 rounded-lg">
                 <div className="text-center">
                   <div className="text-3xl font-mono font-bold text-blue-300">
-                    {Math.floor(gameState.timeLeft / 60)}:{(gameState.timeLeft % 60).toString().padStart(2, '0')}
+                    {Math.floor((gameState?.timer || 0) / 60)}:{((gameState?.timer || 0) % 60).toString().padStart(2, '0')}
                   </div>
                   <div className="text-sm text-gray-300">Time Remaining</div>
                 </div>
@@ -231,17 +242,17 @@ export default function AdminPanel() {
             <h2 className="text-2xl font-bold mb-6">Player Status</h2>
             
             <div className="space-y-4">
-              {gameState?.players && gameState.players.length > 0 ? (
-                gameState.players.map((player, index) => (
-                  <div key={player.socketId} className="bg-black/20 rounded-lg p-4">
+              {Object.keys(gameState?.players || {}).length > 0 ? (
+                Object.values(gameState.players).map((player, index) => (
+                  <div key={player.socketId || player.id || index} className="bg-black/20 rounded-lg p-4">
                     <div className="flex justify-between items-center mb-2">
                       <h3 className="font-semibold">{player.id}</h3>
                       <div className={`w-3 h-3 rounded-full ${index === 0 ? 'bg-blue-400' : 'bg-red-400'}`}></div>
                     </div>
                     <div className="text-sm text-gray-300">
-                      Socket: {player.socketId.substring(0, 8)}...
+                      Socket: {player.socketId ? `${player.socketId.substring(0, 8)}...` : 'N/A'}
                     </div>
-                    {gameState.state === 'writing' && player.prompt && (
+                    {gameState?.phase === 'battling' && player.prompt && (
                       <div className="mt-2 text-sm bg-gray-800 p-2 rounded">
                         {player.prompt.length > 100 ? `${player.prompt.substring(0, 100)}...` : player.prompt}
                       </div>
