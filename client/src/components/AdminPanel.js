@@ -230,17 +230,70 @@ export default function AdminPanel() {
     return { color: 'text-green-500', text: 'Connected' };
   };
 
-  const getPlayerCount = () => {
-    if (!gameState?.players) return 0;
-    return Object.keys(gameState.players).filter(id => gameState.players[id].connected).length;
+  const triggerNextRound = () => {
+    if (!socket) return;
+    socket.emit('next-round');
   };
 
-  const canStartBattle = () => {
-    return connected && 
-           gameState?.phase === 'ready' && 
-           gameState?.target && 
-           getPlayerCount() >= 2;
+  const endCompetition = () => {
+    if (!socket) return;
+    socket.emit('end-competition');
   };
+
+  const standings = useMemo(() => {
+    if (!gameState?.scores) return [];
+    return Object.entries(gameState.scores)
+      .map(([playerId, score]) => ({
+        playerId,
+        score,
+        connected: !!gameState.players?.[playerId]?.connected
+      }))
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return Number(a.playerId) - Number(b.playerId);
+      });
+  }, [gameState?.scores, gameState?.players]);
+
+  const connectedPlayerCount = useMemo(() => {
+    if (!gameState?.players) return 0;
+    return Object.values(gameState.players).filter(player => player.connected).length;
+  }, [gameState?.players]);
+
+  const roundsPlayed = gameState?.roundsPlayed || 0;
+  const roundGoal = gameState?.competitionConfig?.roundLimit || null;
+  const pointGoal = gameState?.competitionConfig?.pointLimit || null;
+  const roundProgress = roundGoal ? Math.min(roundsPlayed / roundGoal, 1) : 0;
+  const leaderScore = standings[0]?.score || 0;
+  const pointProgress = pointGoal ? Math.min(leaderScore / pointGoal, 1) : 0;
+  const currentRoundNumber = gameState?.competitionActive
+    ? (gameState.roundNumber || roundsPlayed + 1)
+    : roundsPlayed;
+  const competitionStatus = gameState?.competitionActive
+    ? 'Active'
+    : roundsPlayed > 0
+      ? 'Completed'
+      : 'Not Started';
+  const competitionStatusColor = gameState?.competitionActive
+    ? 'text-green-400'
+    : roundsPlayed > 0
+      ? 'text-blue-300'
+      : 'text-gray-400';
+  const canStartCompetition = connected && !gameState?.competitionActive && connectedPlayerCount >= 2;
+  const canAdvanceRound = !!gameState?.competitionActive;
+  const canEndCompetition = !!gameState?.competitionActive;
+  const displayCurrentRound = gameState?.competitionActive
+    ? Math.max(1, currentRoundNumber || 1)
+    : Math.max(roundsPlayed, 0);
+
+  const getConnectionStatus = () => {
+    if (!connected) return { color: 'text-red-500', text: 'Disconnected' };
+    return { color: 'text-green-500', text: 'Connected' };
+  };
+
+  const canStartBattle = connected &&
+    gameState?.phase === 'ready' &&
+    gameState?.target &&
+    connectedPlayerCount >= 2;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 text-white">
@@ -259,7 +312,7 @@ export default function AdminPanel() {
             </div>
             <div className="text-gray-300">
               <Users className="inline h-5 w-5 mr-2" />
-              {getPlayerCount()}/2 Players
+              {connectedPlayerCount}/2 Players
             </div>
           </div>
         </div>
@@ -710,7 +763,7 @@ export default function AdminPanel() {
           <div className="flex space-x-4">
             <button
               onClick={startBattle}
-              disabled={!canStartBattle()}
+              disabled={!canStartBattle}
               className="bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white font-bold py-3 px-6 rounded-lg transition-colors flex items-center space-x-2"
             >
               <Play className="h-5 w-5" />
@@ -727,10 +780,10 @@ export default function AdminPanel() {
             </button>
           </div>
           
-          {!canStartBattle() && connected && (
+          {!canStartBattle && connected && (
             <div className="mt-4 text-yellow-400">
-              ⚠️ {!gameState?.target ? 'Set a target first' : 
-                   getPlayerCount() < 2 ? 'Need 2 players connected' :
+              ⚠️ {!gameState?.target ? 'Set a target first' :
+                   connectedPlayerCount < 2 ? 'Need 2 players connected' :
                    'Game not ready'}
             </div>
           )}
