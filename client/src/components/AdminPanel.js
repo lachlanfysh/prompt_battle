@@ -175,7 +175,7 @@ export default function AdminPanel() {
     });
   };
 
-  const triggerNextRound = () => {
+  const handleNextRound = () => {
     if (!socket) return;
     socket.emit('next-round');
   };
@@ -455,7 +455,7 @@ export default function AdminPanel() {
                 </button>
 
                 <button
-                  onClick={triggerNextRound}
+                  onClick={handleNextRound}
                   disabled={!canAdvanceRound}
                   className={`flex items-center px-4 py-2 rounded-lg font-semibold transition-colors border ${
                     canAdvanceRound
