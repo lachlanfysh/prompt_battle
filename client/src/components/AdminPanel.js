@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Settings, Play, RotateCcw, Timer, Users, Monitor } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Settings, Play, RotateCcw, Timer, Users, Monitor, Trophy, Flag, Target } from 'lucide-react';
 import io from 'socket.io-client';
 import { getSocketURL, getProxiedImageUrl } from '../utils/network';
 
@@ -14,6 +14,8 @@ export default function AdminPanel() {
   const [selectedImage, setSelectedImage] = useState(null);
   const [randomTopicEnabled, setRandomTopicEnabled] = useState(false);
   const [healthStatus, setHealthStatus] = useState(null);
+  const [roundLimit, setRoundLimit] = useState('');
+  const [pointLimit, setPointLimit] = useState('');
 
   const presetTargets = [
     // Corporate & Business Humor (accessible)
@@ -118,6 +120,13 @@ export default function AdminPanel() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!gameState?.competitionActive) return;
+    const { roundLimit: rl, pointLimit: pl } = gameState.competitionConfig || {};
+    setRoundLimit(rl ?? '');
+    setPointLimit(pl ?? '');
+  }, [gameState?.competitionActive, gameState?.competitionConfig?.roundLimit, gameState?.competitionConfig?.pointLimit]);
+
   const setTargetPrompt = () => {
     if (socket) {
       if (targetType === 'text') {
@@ -153,25 +162,96 @@ export default function AdminPanel() {
     if (socket) {
       socket.emit('reset-game');
       setTarget('');
+      setRoundLimit('');
+      setPointLimit('');
     }
   };
+
+  const startCompetition = () => {
+    if (!socket) return;
+    socket.emit('start-competition', {
+      roundLimit: roundLimit || null,
+      pointLimit: pointLimit || null
+    });
+  };
+
+  const triggerNextRound = () => {
+    if (!socket) return;
+    socket.emit('next-round');
+  };
+
+  const endCompetition = () => {
+    if (!socket) return;
+    socket.emit('end-competition');
+  };
+
+  const playerEntries = useMemo(() => {
+    const entries = Object.entries(gameState?.players || {});
+    return entries.sort((a, b) => {
+      const aNum = Number(a[0]);
+      const bNum = Number(b[0]);
+      if (!Number.isNaN(aNum) && !Number.isNaN(bNum)) {
+        return aNum - bNum;
+      }
+      return a[0].localeCompare(b[0]);
+    });
+  }, [gameState?.players]);
+
+  const standings = useMemo(() => {
+    if (!gameState?.scores) return [];
+    return Object.entries(gameState.scores)
+      .map(([playerId, score]) => ({
+        playerId,
+        score,
+        connected: !!gameState.players?.[playerId]?.connected
+      }))
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return Number(a.playerId) - Number(b.playerId);
+      });
+  }, [gameState?.scores, gameState?.players]);
+
+  const connectedPlayerCount = useMemo(
+    () => playerEntries.filter(([, player]) => player?.connected).length,
+    [playerEntries]
+  );
+  const expectedPlayers = Math.max(playerEntries.length, 2);
+
+  const roundsPlayed = gameState?.roundsPlayed || 0;
+  const roundGoal = gameState?.competitionConfig?.roundLimit || null;
+  const pointGoal = gameState?.competitionConfig?.pointLimit || null;
+  const roundProgress = roundGoal ? Math.min(roundsPlayed / roundGoal, 1) : 0;
+  const leaderScore = standings[0]?.score || 0;
+  const pointProgress = pointGoal ? Math.min(leaderScore / pointGoal, 1) : 0;
+  const currentRoundNumber = gameState?.competitionActive
+    ? (gameState.roundNumber || roundsPlayed + 1)
+    : roundsPlayed;
+  const competitionStatus = gameState?.competitionActive
+    ? 'Active'
+    : roundsPlayed > 0
+      ? 'Completed'
+      : 'Not Started';
+  const competitionStatusColor = gameState?.competitionActive
+    ? 'text-green-400'
+    : roundsPlayed > 0
+      ? 'text-blue-300'
+      : 'text-gray-400';
+  const canStartCompetition = connected && !gameState?.competitionActive && connectedPlayerCount >= 2;
+  const canAdvanceRound = !!gameState?.competitionActive;
+  const canEndCompetition = !!gameState?.competitionActive;
+  const displayCurrentRound = gameState?.competitionActive
+    ? Math.max(1, currentRoundNumber || 1)
+    : Math.max(roundsPlayed, 0);
 
   const getConnectionStatus = () => {
     if (!connected) return { color: 'text-red-500', text: 'Disconnected' };
     return { color: 'text-green-500', text: 'Connected' };
   };
 
-  const getPlayerCount = () => {
-    if (!gameState?.players) return 0;
-    return Object.keys(gameState.players).filter(id => gameState.players[id].connected).length;
-  };
-
-  const canStartBattle = () => {
-    return connected && 
-           gameState?.phase === 'ready' && 
-           gameState?.target && 
-           getPlayerCount() >= 2;
-  };
+  const canStartBattle = connected &&
+    gameState?.phase === 'ready' &&
+    gameState?.target &&
+    connectedPlayerCount >= 2;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 text-white">
@@ -190,7 +270,7 @@ export default function AdminPanel() {
             </div>
             <div className="text-gray-300">
               <Users className="inline h-5 w-5 mr-2" />
-              {getPlayerCount()}/2 Players
+              {connectedPlayerCount}/{expectedPlayers} Players
             </div>
           </div>
         </div>
@@ -255,17 +335,21 @@ export default function AdminPanel() {
             <div>
               <h3 className="font-semibold mb-2">Connected Players:</h3>
               <div className="space-y-2">
-                {['1', '2'].map(playerId => (
-                  <div key={playerId} className="flex items-center space-x-2">
-                    <div className={`w-3 h-3 rounded-full ${
-                      gameState?.players?.[playerId]?.connected ? 'bg-green-500' : 'bg-gray-500'
-                    }`}></div>
-                    <span>Player {playerId}</span>
-                    {gameState?.players?.[playerId]?.ready && (
-                      <span className="text-green-400 text-sm">✓ Ready</span>
-                    )}
-                  </div>
-                ))}
+                {playerEntries.length > 0 ? (
+                  playerEntries.map(([playerId, player]) => (
+                    <div key={playerId} className="flex items-center space-x-2">
+                      <div className={`w-3 h-3 rounded-full ${
+                        player?.connected ? 'bg-green-500' : 'bg-gray-500'
+                      }`}></div>
+                      <span>Player {playerId}</span>
+                      {player?.ready && (
+                        <span className="text-green-400 text-sm">✓ Ready</span>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-sm text-gray-400">No players connected yet.</div>
+                )}
               </div>
             </div>
           </div>
@@ -290,6 +374,186 @@ export default function AdminPanel() {
               )}
             </div>
           )}
+        </div>
+
+        {/* Competition Controls */}
+        <div className="bg-gray-800 rounded-lg p-6 mb-8">
+          <h2 className="text-xl font-bold mb-4 flex items-center">
+            <Trophy className="h-6 w-6 mr-2 text-yellow-400" />
+            <span>Competition Mode</span>
+          </h2>
+
+          <div className="grid lg:grid-cols-2 gap-6">
+            <div>
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <p className="text-sm text-gray-400 uppercase tracking-wide">Status</p>
+                  <p className={`text-2xl font-bold ${competitionStatusColor}`}>{competitionStatus}</p>
+                </div>
+                <div className="text-right text-sm text-gray-300">
+                  <div>Rounds Played: <span className="font-semibold text-white">{roundsPlayed}</span></div>
+                  <div>Current Round: <span className="font-semibold text-white">{displayCurrentRound || 0}</span></div>
+                </div>
+              </div>
+
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold mb-2 flex items-center">
+                    <Flag className="h-4 w-4 mr-2 text-yellow-400" />
+                    Round Goal
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="No limit"
+                    value={roundLimit}
+                    onChange={(e) => setRoundLimit(e.target.value)}
+                    disabled={gameState?.competitionActive}
+                    className={`w-full p-2 rounded border text-white focus:outline-none focus:border-blue-500 ${
+                      gameState?.competitionActive
+                        ? 'bg-gray-700 border-gray-600 cursor-not-allowed text-gray-400'
+                        : 'bg-gray-700 border-gray-600 hover:border-gray-500'
+                    }`}
+                  />
+                  <p className="text-xs text-gray-400 mt-1">Automatically ends after this many rounds.</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold mb-2 flex items-center">
+                    <Target className="h-4 w-4 mr-2 text-red-400" />
+                    Point Goal
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="No limit"
+                    value={pointLimit}
+                    onChange={(e) => setPointLimit(e.target.value)}
+                    disabled={gameState?.competitionActive}
+                    className={`w-full p-2 rounded border text-white focus:outline-none focus:border-blue-500 ${
+                      gameState?.competitionActive
+                        ? 'bg-gray-700 border-gray-600 cursor-not-allowed text-gray-400'
+                        : 'bg-gray-700 border-gray-600 hover:border-gray-500'
+                    }`}
+                  />
+                  <p className="text-xs text-gray-400 mt-1">First player to reach this total wins the series.</p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-3 mt-6">
+                <button
+                  onClick={startCompetition}
+                  disabled={!canStartCompetition}
+                  className={`flex items-center px-4 py-2 rounded-lg font-semibold transition-colors border ${
+                    canStartCompetition
+                      ? 'bg-blue-600 hover:bg-blue-500 border-blue-500 text-white'
+                      : 'bg-gray-700 text-gray-400 border-gray-600 cursor-not-allowed'
+                  }`}
+                >
+                  <Trophy className="h-5 w-5 mr-2" />
+                  Start Competition
+                </button>
+
+                <button
+                  onClick={triggerNextRound}
+                  disabled={!canAdvanceRound}
+                  className={`flex items-center px-4 py-2 rounded-lg font-semibold transition-colors border ${
+                    canAdvanceRound
+                      ? 'bg-purple-600 hover:bg-purple-500 border-purple-500 text-white'
+                      : 'bg-gray-700 text-gray-400 border-gray-600 cursor-not-allowed'
+                  }`}
+                >
+                  <Play className="h-5 w-5 mr-2" />
+                  Next Round
+                </button>
+
+                <button
+                  onClick={endCompetition}
+                  disabled={!canEndCompetition}
+                  className={`flex items-center px-4 py-2 rounded-lg font-semibold transition-colors border ${
+                    canEndCompetition
+                      ? 'bg-red-600 hover:bg-red-500 border-red-500 text-white'
+                      : 'bg-gray-700 text-gray-400 border-gray-600 cursor-not-allowed'
+                  }`}
+                >
+                  <RotateCcw className="h-5 w-5 mr-2" />
+                  End Competition
+                </button>
+              </div>
+
+              <div className="mt-6 space-y-4">
+                <div>
+                  <div className="flex items-center justify-between text-xs text-gray-300 mb-1">
+                    <span>Round Progress</span>
+                    {roundGoal ? (
+                      <span>{Math.min(roundsPlayed, roundGoal)}/{roundGoal} rounds</span>
+                    ) : (
+                      <span>No round limit</span>
+                    )}
+                  </div>
+                  <div className="h-2 bg-gray-700 rounded">
+                    <div
+                      className="h-2 bg-blue-500 rounded"
+                      style={{ width: `${roundGoal ? Math.min(100, Math.round(roundProgress * 100)) : 0}%` }}
+                    ></div>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between text-xs text-gray-300 mb-1">
+                    <span>Point Progress</span>
+                    {pointGoal ? (
+                      <span>{leaderScore}/{pointGoal} pts</span>
+                    ) : (
+                      <span>No point limit</span>
+                    )}
+                  </div>
+                  <div className="h-2 bg-gray-700 rounded">
+                    <div
+                      className="h-2 bg-green-500 rounded"
+                      style={{ width: `${pointGoal ? Math.min(100, Math.round(pointProgress * 100)) : 0}%` }}
+                    ></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-lg font-semibold mb-3 flex items-center text-yellow-300">
+                <Trophy className="h-5 w-5 mr-2" />
+                Live Standings
+              </h3>
+              {standings.length > 0 ? (
+                <div className="space-y-2">
+                  {standings.map((entry, index) => (
+                    <div
+                      key={entry.playerId}
+                      className={`flex items-center justify-between bg-gray-700 rounded-lg px-4 py-2 border ${
+                        index === 0 ? 'border-yellow-400' : 'border-gray-600'
+                      }`}
+                    >
+                      <div>
+                        <div className="font-semibold">Player {entry.playerId}</div>
+                        <div className="text-xs text-gray-400">
+                          {entry.connected ? 'Connected' : 'Offline'}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-xl font-bold text-white">{entry.score}</div>
+                        {pointGoal && (
+                          <div className="text-xs text-gray-300">
+                            {Math.round(pointGoal ? (entry.score / pointGoal) * 100 : 0)}%
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-400">Standings will appear once the competition begins.</p>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Target Setting */}
@@ -461,7 +725,7 @@ export default function AdminPanel() {
           <div className="flex space-x-4">
             <button
               onClick={startBattle}
-              disabled={!canStartBattle()}
+              disabled={!canStartBattle}
               className="bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white font-bold py-3 px-6 rounded-lg transition-colors flex items-center space-x-2"
             >
               <Play className="h-5 w-5" />
@@ -478,10 +742,10 @@ export default function AdminPanel() {
             </button>
           </div>
           
-          {!canStartBattle() && connected && (
+          {!canStartBattle && connected && (
             <div className="mt-4 text-yellow-400">
-              ⚠️ {!gameState?.target ? 'Set a target first' : 
-                   getPlayerCount() < 2 ? 'Need 2 players connected' :
+              ⚠️ {!gameState?.target ? 'Set a target first' :
+                   connectedPlayerCount < 2 ? 'Need at least two players connected' :
                    'Game not ready'}
             </div>
           )}
