@@ -175,7 +175,7 @@ export default function AdminPanel() {
     });
   };
 
-  const triggerNextRound = () => {
+  const handleNextRound = () => {
     if (!socket) return;
     socket.emit('next-round');
   };
@@ -185,79 +185,37 @@ export default function AdminPanel() {
     socket.emit('end-competition');
   };
 
-  const standings = useMemo(() => {
-    if (!gameState?.scores) return [];
-    return Object.entries(gameState.scores)
-      .map(([playerId, score]) => ({
-        playerId,
-        score,
-        connected: !!gameState.players?.[playerId]?.connected
-      }))
-      .sort((a, b) => {
-        if (b.score !== a.score) return b.score - a.score;
-        return Number(a.playerId) - Number(b.playerId);
-      });
-  }, [gameState?.scores, gameState?.players]);
-
-  const roundsPlayed = gameState?.roundsPlayed || 0;
-  const roundGoal = gameState?.competitionConfig?.roundLimit || null;
-  const pointGoal = gameState?.competitionConfig?.pointLimit || null;
-  const roundProgress = roundGoal ? Math.min(roundsPlayed / roundGoal, 1) : 0;
-  const leaderScore = standings[0]?.score || 0;
-  const pointProgress = pointGoal ? Math.min(leaderScore / pointGoal, 1) : 0;
-  const currentRoundNumber = gameState?.competitionActive
-    ? (gameState.roundNumber || roundsPlayed + 1)
-    : roundsPlayed;
-  const competitionStatus = gameState?.competitionActive
-    ? 'Active'
-    : roundsPlayed > 0
-      ? 'Completed'
-      : 'Not Started';
-  const competitionStatusColor = gameState?.competitionActive
-    ? 'text-green-400'
-    : roundsPlayed > 0
-      ? 'text-blue-300'
-      : 'text-gray-400';
-  const canStartCompetition = connected && !gameState?.competitionActive && getPlayerCount() >= 2;
-  const canAdvanceRound = !!gameState?.competitionActive;
-  const canEndCompetition = !!gameState?.competitionActive;
-  const displayCurrentRound = gameState?.competitionActive
-    ? Math.max(1, currentRoundNumber || 1)
-    : Math.max(roundsPlayed, 0);
-
-  const getConnectionStatus = () => {
-    if (!connected) return { color: 'text-red-500', text: 'Disconnected' };
-    return { color: 'text-green-500', text: 'Connected' };
-  };
-
-  const triggerNextRound = () => {
-    if (!socket) return;
-    socket.emit('next-round');
-  };
-
-  const endCompetition = () => {
-    if (!socket) return;
-    socket.emit('end-competition');
-  };
-
-  const standings = useMemo(() => {
-    if (!gameState?.scores) return [];
-    return Object.entries(gameState.scores)
-      .map(([playerId, score]) => ({
-        playerId,
-        score,
-        connected: !!gameState.players?.[playerId]?.connected
-      }))
-      .sort((a, b) => {
-        if (b.score !== a.score) return b.score - a.score;
-        return Number(a.playerId) - Number(b.playerId);
-      });
-  }, [gameState?.scores, gameState?.players]);
-
-  const connectedPlayerCount = useMemo(() => {
-    if (!gameState?.players) return 0;
-    return Object.values(gameState.players).filter(player => player.connected).length;
+  const playerEntries = useMemo(() => {
+    const entries = Object.entries(gameState?.players || {});
+    return entries.sort((a, b) => {
+      const aNum = Number(a[0]);
+      const bNum = Number(b[0]);
+      if (!Number.isNaN(aNum) && !Number.isNaN(bNum)) {
+        return aNum - bNum;
+      }
+      return a[0].localeCompare(b[0]);
+    });
   }, [gameState?.players]);
+
+  const standings = useMemo(() => {
+    if (!gameState?.scores) return [];
+    return Object.entries(gameState.scores)
+      .map(([playerId, score]) => ({
+        playerId,
+        score,
+        connected: !!gameState.players?.[playerId]?.connected
+      }))
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return Number(a.playerId) - Number(b.playerId);
+      });
+  }, [gameState?.scores, gameState?.players]);
+
+  const connectedPlayerCount = useMemo(
+    () => playerEntries.filter(([, player]) => player?.connected).length,
+    [playerEntries]
+  );
+  const expectedPlayers = Math.max(playerEntries.length, 2);
 
   const roundsPlayed = gameState?.roundsPlayed || 0;
   const roundGoal = gameState?.competitionConfig?.roundLimit || null;
@@ -312,7 +270,7 @@ export default function AdminPanel() {
             </div>
             <div className="text-gray-300">
               <Users className="inline h-5 w-5 mr-2" />
-              {connectedPlayerCount}/2 Players
+              {connectedPlayerCount}/{expectedPlayers} Players
             </div>
           </div>
         </div>
@@ -377,17 +335,21 @@ export default function AdminPanel() {
             <div>
               <h3 className="font-semibold mb-2">Connected Players:</h3>
               <div className="space-y-2">
-                {['1', '2'].map(playerId => (
-                  <div key={playerId} className="flex items-center space-x-2">
-                    <div className={`w-3 h-3 rounded-full ${
-                      gameState?.players?.[playerId]?.connected ? 'bg-green-500' : 'bg-gray-500'
-                    }`}></div>
-                    <span>Player {playerId}</span>
-                    {gameState?.players?.[playerId]?.ready && (
-                      <span className="text-green-400 text-sm">✓ Ready</span>
-                    )}
-                  </div>
-                ))}
+                {playerEntries.length > 0 ? (
+                  playerEntries.map(([playerId, player]) => (
+                    <div key={playerId} className="flex items-center space-x-2">
+                      <div className={`w-3 h-3 rounded-full ${
+                        player?.connected ? 'bg-green-500' : 'bg-gray-500'
+                      }`}></div>
+                      <span>Player {playerId}</span>
+                      {player?.ready && (
+                        <span className="text-green-400 text-sm">✓ Ready</span>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-sm text-gray-400">No players connected yet.</div>
+                )}
               </div>
             </div>
           </div>
@@ -493,7 +455,7 @@ export default function AdminPanel() {
                 </button>
 
                 <button
-                  onClick={triggerNextRound}
+                  onClick={handleNextRound}
                   disabled={!canAdvanceRound}
                   className={`flex items-center px-4 py-2 rounded-lg font-semibold transition-colors border ${
                     canAdvanceRound
@@ -783,7 +745,7 @@ export default function AdminPanel() {
           {!canStartBattle && connected && (
             <div className="mt-4 text-yellow-400">
               ⚠️ {!gameState?.target ? 'Set a target first' :
-                   connectedPlayerCount < 2 ? 'Need 2 players connected' :
+                   connectedPlayerCount < 2 ? 'Need at least two players connected' :
                    'Game not ready'}
             </div>
           )}
