@@ -199,6 +199,61 @@ export default function AdminPanel() {
       });
   }, [gameState?.scores, gameState?.players]);
 
+  const roundsPlayed = gameState?.roundsPlayed || 0;
+  const roundGoal = gameState?.competitionConfig?.roundLimit || null;
+  const pointGoal = gameState?.competitionConfig?.pointLimit || null;
+  const roundProgress = roundGoal ? Math.min(roundsPlayed / roundGoal, 1) : 0;
+  const leaderScore = standings[0]?.score || 0;
+  const pointProgress = pointGoal ? Math.min(leaderScore / pointGoal, 1) : 0;
+  const currentRoundNumber = gameState?.competitionActive
+    ? (gameState.roundNumber || roundsPlayed + 1)
+    : roundsPlayed;
+  const competitionStatus = gameState?.competitionActive
+    ? 'Active'
+    : roundsPlayed > 0
+      ? 'Completed'
+      : 'Not Started';
+  const competitionStatusColor = gameState?.competitionActive
+    ? 'text-green-400'
+    : roundsPlayed > 0
+      ? 'text-blue-300'
+      : 'text-gray-400';
+  const canStartCompetition = connected && !gameState?.competitionActive && getPlayerCount() >= 2;
+  const canAdvanceRound = !!gameState?.competitionActive;
+  const canEndCompetition = !!gameState?.competitionActive;
+  const displayCurrentRound = gameState?.competitionActive
+    ? Math.max(1, currentRoundNumber || 1)
+    : Math.max(roundsPlayed, 0);
+
+  const getConnectionStatus = () => {
+    if (!connected) return { color: 'text-red-500', text: 'Disconnected' };
+    return { color: 'text-green-500', text: 'Connected' };
+  };
+
+  const triggerNextRound = () => {
+    if (!socket) return;
+    socket.emit('next-round');
+  };
+
+  const endCompetition = () => {
+    if (!socket) return;
+    socket.emit('end-competition');
+  };
+
+  const standings = useMemo(() => {
+    if (!gameState?.scores) return [];
+    return Object.entries(gameState.scores)
+      .map(([playerId, score]) => ({
+        playerId,
+        score,
+        connected: !!gameState.players?.[playerId]?.connected
+      }))
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return Number(a.playerId) - Number(b.playerId);
+      });
+  }, [gameState?.scores, gameState?.players]);
+
   const connectedPlayerCount = useMemo(() => {
     if (!gameState?.players) return 0;
     return Object.values(gameState.players).filter(player => player.connected).length;
