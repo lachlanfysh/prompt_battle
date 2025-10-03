@@ -190,10 +190,91 @@ let gameState = {
   generatedImages: {},
   target: null,
   timer: 0,
-  winner: null
+  winner: null,
+  competitionActive: false,
+  roundNumber: 0,
+  roundsPlayed: 0,
+  scores: {},
+  roundHistory: [],
+  competitionConfig: {
+    roundLimit: null,
+    pointLimit: null
+  }
 };
 
 let battleTimerInterval = null;
+
+function ensureScoreEntry(playerId) {
+  if (!playerId) return;
+  if (!gameState.scores[playerId]) {
+    gameState.scores[playerId] = 0;
+  }
+}
+
+function resetRoundState({ clearTarget = false, resetWinner = false } = {}) {
+  Object.keys(gameState.players).forEach(playerId => {
+    if (gameState.players[playerId]) {
+      gameState.players[playerId].ready = false;
+    }
+  });
+
+  gameState.prompts = {};
+  gameState.generatedImages = {};
+  gameState.timer = 0;
+
+  if (clearTarget) {
+    gameState.target = null;
+  }
+
+  if (resetWinner) {
+    gameState.winner = null;
+  }
+}
+
+function prepareNextRound({ auto = false } = {}) {
+  resetRoundState({ clearTarget: true });
+  gameState.phase = 'waiting';
+
+  io.emit('competition-round-advanced', {
+    roundNumber: gameState.roundNumber,
+    roundsPlayed: gameState.roundsPlayed,
+    scores: gameState.scores,
+    auto
+  });
+
+  io.emit('game-state', gameState);
+}
+
+function getLeaders() {
+  const scoreEntries = Object.entries(gameState.scores || {});
+  if (scoreEntries.length === 0) {
+    return { leaders: [], highestScore: 0 };
+  }
+
+  const highestScore = Math.max(...scoreEntries.map(([_, value]) => value));
+  const leaders = scoreEntries
+    .filter(([_, value]) => value === highestScore)
+    .map(([playerId]) => playerId);
+
+  return { leaders, highestScore };
+}
+
+function endCompetition({ reason } = {}) {
+  gameState.competitionActive = false;
+  gameState.roundNumber = gameState.roundsPlayed;
+  const { leaders, highestScore } = getLeaders();
+
+  io.emit('competition-finished', {
+    scores: gameState.scores,
+    roundsPlayed: gameState.roundsPlayed,
+    roundHistory: gameState.roundHistory,
+    reason: reason || 'limit-reached',
+    leaders,
+    highestScore
+  });
+
+  io.emit('game-state', gameState);
+}
 
 // Socket.IO connection handling
 io.on('connection', (socket) => {
@@ -208,6 +289,9 @@ io.on('connection', (socket) => {
       connected: true,
       ready: false
     };
+    if (gameState.competitionActive) {
+      ensureScoreEntry(playerId);
+    }
     socket.join(`player-${playerId}`);
     socket.emit('game-state', gameState);
     socket.broadcast.emit('game-state', gameState);
@@ -246,6 +330,60 @@ io.on('connection', (socket) => {
   });
 
   // Admin controls
+  socket.on('start-competition', (config = {}) => {
+    const roundLimit = config.roundLimit !== undefined && config.roundLimit !== ''
+      ? Number(config.roundLimit)
+      : null;
+    const pointLimit = config.pointLimit !== undefined && config.pointLimit !== ''
+      ? Number(config.pointLimit)
+      : null;
+
+    gameState.competitionActive = true;
+    gameState.roundNumber = 1;
+    gameState.roundsPlayed = 0;
+    gameState.roundHistory = [];
+    gameState.scores = {};
+    Object.keys(gameState.players).forEach(playerId => {
+      gameState.scores[playerId] = 0;
+    });
+    gameState.competitionConfig = {
+      roundLimit: Number.isFinite(roundLimit) && roundLimit > 0 ? roundLimit : null,
+      pointLimit: Number.isFinite(pointLimit) && pointLimit > 0 ? pointLimit : null
+    };
+
+    resetRoundState({ clearTarget: true, resetWinner: true });
+    gameState.phase = 'waiting';
+
+    io.emit('competition-started', {
+      roundNumber: gameState.roundNumber,
+      config: gameState.competitionConfig,
+      scores: gameState.scores
+    });
+    io.emit('game-state', gameState);
+  });
+
+  socket.on('next-round', () => {
+    if (!gameState.competitionActive) {
+      return;
+    }
+
+    gameState.roundNumber = gameState.roundsPlayed + 1;
+    prepareNextRound({ auto: false });
+  });
+
+  socket.on('end-competition', () => {
+    if (!gameState.competitionActive) {
+      return;
+    }
+
+    endCompetition({ reason: 'manual' });
+    resetRoundState({ clearTarget: true, resetWinner: true });
+    gameState.roundNumber = 0;
+    gameState.roundsPlayed = 0;
+    gameState.roundHistory = [];
+    io.emit('game-state', gameState);
+  });
+
   socket.on('set-target', (target) => {
     // Handle both old string format and new object format
     if (typeof target === 'string') {
@@ -255,15 +393,7 @@ io.on('connection', (socket) => {
     }
 
     // Clear out previous round data so the new round starts fresh
-    Object.keys(gameState.players).forEach(playerId => {
-      if (gameState.players[playerId]) {
-        gameState.players[playerId].ready = false;
-      }
-    });
-    gameState.prompts = {};
-    gameState.generatedImages = {};
-    gameState.winner = null;
-    gameState.timer = 0;
+    resetRoundState({ resetWinner: true });
 
     gameState.phase = 'ready';
     io.emit('game-state', gameState);
@@ -300,8 +430,46 @@ io.on('connection', (socket) => {
     clearBattleTimer();
     gameState.winner = winnerId;
     gameState.phase = 'finished';
+
+    if (gameState.competitionActive) {
+      ensureScoreEntry(winnerId);
+      if (winnerId) {
+        gameState.scores[winnerId] += 1;
+      }
+      gameState.roundsPlayed += 1;
+      gameState.roundHistory.push({
+        round: gameState.roundNumber || gameState.roundsPlayed,
+        winner: winnerId,
+        target: gameState.target
+      });
+    }
+
     io.emit('game-state', gameState);
     io.emit('winner-selected', winnerId);
+
+    if (!gameState.competitionActive) {
+      return;
+    }
+
+    const { roundLimit, pointLimit } = gameState.competitionConfig || {};
+    const roundLimitValue = roundLimit ? Number(roundLimit) : null;
+    const pointLimitValue = pointLimit ? Number(pointLimit) : null;
+
+    const maxScore = Object.values(gameState.scores).reduce((max, score) => Math.max(max, score), 0);
+    const roundLimitReached = Number.isFinite(roundLimitValue) && roundLimitValue > 0
+      ? gameState.roundsPlayed >= roundLimitValue
+      : false;
+    const pointLimitReached = Number.isFinite(pointLimitValue) && pointLimitValue > 0
+      ? maxScore >= pointLimitValue
+      : false;
+
+    if (roundLimitReached || pointLimitReached) {
+      endCompetition({ reason: roundLimitReached ? 'round-limit' : 'point-limit' });
+      return;
+    }
+
+    gameState.roundNumber = gameState.roundsPlayed + 1;
+    prepareNextRound({ auto: true });
   });
 
   socket.on('reset-game', () => {
@@ -320,7 +488,16 @@ io.on('connection', (socket) => {
       generatedImages: {},
       target: null,
       timer: 0,
-      winner: null
+      winner: null,
+      competitionActive: false,
+      roundNumber: 0,
+      roundsPlayed: 0,
+      scores: {},
+      roundHistory: [],
+      competitionConfig: {
+        roundLimit: null,
+        pointLimit: null
+      }
     };
 
     io.emit('game-state', gameState);

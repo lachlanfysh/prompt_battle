@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import io from 'socket.io-client';
 import QRCode from 'qrcode';
 import { getSocketURL, getProxiedImageUrl } from '../utils/network';
@@ -595,6 +595,31 @@ export default function CentralDisplay() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const standings = useMemo(() => {
+    if (!gameState?.scores) return [];
+    return Object.entries(gameState.scores)
+      .map(([playerId, score]) => ({
+        playerId,
+        score,
+        connected: !!gameState.players?.[playerId]?.connected
+      }))
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return Number(a.playerId) - Number(b.playerId);
+      });
+  }, [gameState?.scores, gameState?.players]);
+
+  const roundGoal = gameState?.competitionConfig?.roundLimit || null;
+  const pointGoal = gameState?.competitionConfig?.pointLimit || null;
+  const roundsPlayed = gameState?.roundsPlayed || 0;
+  const leaderScore = standings[0]?.score || 0;
+  const roundProgress = roundGoal ? Math.min(roundsPlayed / roundGoal, 1) : 0;
+  const pointProgress = pointGoal ? Math.min(leaderScore / pointGoal, 1) : 0;
+  const activeRoundNumber = gameState?.competitionActive
+    ? (gameState.roundNumber || roundsPlayed + 1)
+    : roundsPlayed;
+  const showCompetitionSummary = (standings.length > 0) || gameState?.competitionActive || !!roundGoal || !!pointGoal;
+
   const getPhaseTitle = () => {
     switch (gameState?.phase) {
       case 'waiting':
@@ -680,7 +705,7 @@ export default function CentralDisplay() {
               <h1 className="text-2xl font-bold mb-2" style={{ fontSize: '36px' }}>
                 {getPhaseTitle()}
               </h1>
-              
+
               {gameState?.target && gameState?.phase !== 'waiting' && (
                 <div className="border border-black p-4 mb-4 bg-gray-100" style={{
                   boxShadow: 'inset 2px 2px 0px #999'
@@ -688,8 +713,8 @@ export default function CentralDisplay() {
                   <h2 className="font-bold mb-2" style={{ fontSize: '20px' }}>TARGET:</h2>
                   {gameState.target.type === 'image' ? (
                     <div className="flex flex-col items-center space-y-3">
-                      <img 
-                        src={getProxiedImageUrl(gameState.target.imageUrl)} 
+                      <img
+                        src={getProxiedImageUrl(gameState.target.imageUrl)}
                         alt="Challenge"
                         className="max-w-full max-h-72 object-contain border-2 border-gray-400"
                       />
@@ -703,6 +728,101 @@ export default function CentralDisplay() {
                 </div>
               )}
             </div>
+
+            {showCompetitionSummary && (
+              <div
+                className="border-2 border-black bg-white p-4 mb-6"
+                style={{ boxShadow: '3px 3px 0px black' }}
+              >
+                <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-4">
+                  <div>
+                    <h3 className="font-bold" style={{ fontSize: '24px' }}>Competition Standings</h3>
+                    <p style={{ fontSize: '12px' }}>
+                      {gameState?.competitionActive
+                        ? `Round ${Math.max(1, activeRoundNumber || 1)} in progress`
+                        : roundsPlayed > 0
+                          ? `Completed ${roundsPlayed} ${roundsPlayed === 1 ? 'round' : 'rounds'}`
+                          : 'Awaiting competition start'}
+                    </p>
+                  </div>
+                  <div className="text-right" style={{ fontSize: '12px' }}>
+                    {roundGoal && <div>Round goal: {roundGoal}</div>}
+                    {pointGoal && <div>Point goal: {pointGoal}</div>}
+                  </div>
+                </div>
+
+                {roundGoal && (
+                  <div className="mb-4">
+                    <div className="flex justify-between" style={{ fontSize: '10px' }}>
+                      <span>Round Progress</span>
+                      <span>{Math.min(roundsPlayed, roundGoal)}/{roundGoal} completed</span>
+                    </div>
+                    <div className="h-3 border border-black bg-gray-200 relative">
+                      <div
+                        className="bg-blue-500 h-full"
+                        style={{ width: `${Math.min(100, Math.round(roundProgress * 100))}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                )}
+
+                {pointGoal && (
+                  <div className="mb-4">
+                    <div className="flex justify-between" style={{ fontSize: '10px' }}>
+                      <span>Point Progress</span>
+                      <span>{leaderScore}/{pointGoal} pts</span>
+                    </div>
+                    <div className="h-3 border border-black bg-gray-200 relative">
+                      <div
+                        className="bg-green-500 h-full"
+                        style={{ width: `${Math.min(100, Math.round(pointProgress * 100))}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                )}
+
+                {standings.length > 0 ? (
+                  <div className="grid md:grid-cols-2 gap-3">
+                    {standings.map((entry, index) => (
+                      <div
+                        key={entry.playerId}
+                        className={`border border-black px-3 py-3 flex items-center justify-between ${
+                          index === 0 ? 'bg-yellow-200' : 'bg-gray-100'
+                        }`}
+                        style={{ boxShadow: '2px 2px 0px #555' }}
+                      >
+                        <div className="flex items-center space-x-3">
+                          <div
+                            className="w-8 h-8 border border-black bg-white flex items-center justify-center font-bold"
+                            style={{ fontSize: '14px' }}
+                          >
+                            #{index + 1}
+                          </div>
+                          <div>
+                            <div className="font-bold" style={{ fontSize: '16px' }}>Player {entry.playerId}</div>
+                            <div style={{ fontSize: '10px' }}>
+                              {entry.connected ? 'Connected' : 'Offline'}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-bold" style={{ fontSize: '20px' }}>{entry.score}</div>
+                          {pointGoal && pointGoal > 0 && (
+                            <div style={{ fontSize: '10px' }}>
+                              {Math.round((entry.score / pointGoal) * 100)}%
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center" style={{ fontSize: '12px' }}>
+                    Competition stats will appear once the series begins.
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Live Prompts Display */}
             {gameState?.phase === 'battling' && (
