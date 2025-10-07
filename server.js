@@ -517,6 +517,45 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('add-player-slot', () => {
+    const currentSlots = Number.isFinite(Number(gameState.playerSlots))
+      ? Number(gameState.playerSlots)
+      : 2;
+    const nextSlot = currentSlots + 1;
+    gameState.playerSlots = nextSlot;
+    io.emit('player-slot-added', { playerSlots: gameState.playerSlots, slotId: nextSlot });
+    io.emit('game-state', gameState);
+  });
+
+  socket.on('remove-player-slot', () => {
+    const currentSlots = Number.isFinite(Number(gameState.playerSlots))
+      ? Number(gameState.playerSlots)
+      : 2;
+
+    const highestActiveSlot = Object.keys(gameState.players || {}).reduce((max, playerId) => {
+      const numericId = Number(playerId);
+      if (!Number.isFinite(numericId)) {
+        return max;
+      }
+      return Math.max(max, numericId);
+    }, 0);
+
+    const minimumSlots = Math.max(2, highestActiveSlot);
+
+    if (currentSlots <= minimumSlots) {
+      socket.emit('player-slot-removal-blocked', {
+        playerSlots: currentSlots,
+        minimumSlots
+      });
+      return;
+    }
+
+    const nextSlot = currentSlots - 1;
+    gameState.playerSlots = nextSlot;
+    io.emit('player-slot-removed', { playerSlots: gameState.playerSlots });
+    io.emit('game-state', gameState);
+  });
+
   // Real-time prompt updates
   socket.on('prompt-update', (data) => {
     const { playerId, prompt } = data;

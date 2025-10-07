@@ -446,8 +446,6 @@ export default function CentralDisplay() {
   const [timer, setTimer] = useState(0);
   const [images, setImages] = useState({});
   const [qrCodes, setQrCodes] = useState({});
-  const [nextPlayerNumber, setNextPlayerNumber] = useState(3);
-  const [hasGeneratedNextPlayer, setHasGeneratedNextPlayer] = useState(false);
   const [gptScoring, setGptScoring] = useState(null);
   const [scoringLoading, setScoringLoading] = useState(false);
   const [bracket, setBracket] = useState(null);
@@ -458,48 +456,86 @@ export default function CentralDisplay() {
   const waitingContainerRef = useRef(null);
   const [playerBoxes, setPlayerBoxes] = useState([]);
   const previousPhaseRef = useRef();
+  const qrCodesRef = useRef({});
+
+  useEffect(() => {
+    qrCodesRef.current = qrCodes;
+  }, [qrCodes]);
+
+  const playerSlotCount = useMemo(() => {
+    const reserved = Number(gameState?.playerSlots) || 0;
+    const highestConnected = Object.keys(gameState?.players || {}).reduce((max, id) => {
+      const numericId = Number(id);
+      if (!Number.isFinite(numericId)) return max;
+      return Math.max(max, numericId);
+    }, 0);
+    return Math.max(reserved, highestConnected, 2);
+  }, [gameState?.playerSlots, gameState?.players]);
+
+  const slotIds = useMemo(
+    () => Array.from({ length: playerSlotCount }, (_, idx) => idx + 1),
+    [playerSlotCount]
+  );
   
   // Update player box positions for flocking birds
   useEffect(() => {
     const updatePlayerBoxes = () => {
-      if (waitingContainerRef.current) {
-        const containerRect = waitingContainerRef.current.getBoundingClientRect();
-        setPlayerBoxes([
-          { x: containerRect.width * 0.2, y: containerRect.height * 0.4, width: 250, height: 300 },
-          { x: containerRect.width * 0.8 - 250, y: containerRect.height * 0.4, width: 250, height: 300 }
-        ]);
+      if (!waitingContainerRef.current) return;
+      const containerRect = waitingContainerRef.current.getBoundingClientRect();
+      const columns = playerSlotCount >= 5 ? 3 : Math.max(Math.min(playerSlotCount, 2), 1);
+      const rows = Math.max(Math.ceil(playerSlotCount / columns), 1);
+      const cardWidth = columns > 0 ? (containerRect.width / columns) * 0.6 : containerRect.width * 0.8;
+      const cardHeight = Math.min(300, (containerRect.height / rows) * 0.7);
+
+      const boxes = [];
+      for (let index = 0; index < playerSlotCount; index++) {
+        const col = index % columns;
+        const row = Math.floor(index / columns);
+        const centerX = containerRect.width * (col + 0.5) / columns;
+        const x = centerX - cardWidth / 2;
+        const y = containerRect.height * 0.2 + row * (cardHeight + 40);
+        boxes.push({ x, y, width: cardWidth, height: cardHeight });
       }
+
+      setPlayerBoxes(boxes);
     };
 
     updatePlayerBoxes();
     window.addEventListener('resize', updatePlayerBoxes);
     return () => window.removeEventListener('resize', updatePlayerBoxes);
-  }, [gameState?.phase]);
+  }, [gameState?.phase, playerSlotCount]);
 
-  // Generate initial QR codes
+  // Generate QR codes for all reserved player slots
   useEffect(() => {
-    const generateInitialQRCodes = async () => {
+    const generateQRCodes = async () => {
       const baseUrl = window.location.origin;
-      const codes = {};
-      
-      for (let i = 1; i <= 2; i++) {
+      const updates = {};
+
+      for (let i = 1; i <= playerSlotCount; i++) {
+        const key = String(i);
+        if (qrCodesRef.current[key]) continue;
+
         try {
-          const playerUrl = `${baseUrl}/player/${i}`;
+          const playerUrl = `${baseUrl}/player/${key}`;
           const qrDataURL = await QRCode.toDataURL(playerUrl, {
             width: 200,
             margin: 2,
             color: { dark: '#000000', light: '#FFFFFF' }
           });
-          codes[i] = qrDataURL;
+          updates[key] = qrDataURL;
         } catch (error) {
-          console.error(`Error generating QR code for player ${i}:`, error);
+          console.error(`Error generating QR code for player ${key}:`, error);
         }
       }
-      setQrCodes(codes);
+
+      if (Object.keys(updates).length > 0) {
+        qrCodesRef.current = { ...qrCodesRef.current, ...updates };
+        setQrCodes(prev => ({ ...prev, ...updates }));
+      }
     };
-    
-    generateInitialQRCodes();
-  }, []);
+
+    generateQRCodes();
+  }, [playerSlotCount]);
   
   // Socket connection with all events
   useEffect(() => {
@@ -677,37 +713,6 @@ export default function CentralDisplay() {
     previousPhaseRef.current = currentPhase;
   }, [gameState?.phase]);
   
-  // Generate QR code for next player when someone wins (but only once per game)
-  useEffect(() => {
-    if (gameState?.phase === 'finished' && gameState.winner && !hasGeneratedNextPlayer) {
-      const generateNextPlayerQR = async () => {
-        try {
-          const baseUrl = window.location.origin;
-          const playerUrl = `${baseUrl}/player/${nextPlayerNumber}`;
-          const qrDataURL = await QRCode.toDataURL(playerUrl, {
-            width: 200,
-            margin: 2,
-            color: { dark: '#000000', light: '#FFFFFF' }
-          });
-          setQrCodes(prev => ({ ...prev, [nextPlayerNumber]: qrDataURL }));
-          setHasGeneratedNextPlayer(true);
-        } catch (error) {
-          console.error(`Error generating QR code for player ${nextPlayerNumber}:`, error);
-        }
-      };
-      
-      generateNextPlayerQR();
-    }
-    
-    // Reset for next round when game resets
-    if (gameState?.phase === 'waiting') {
-      setHasGeneratedNextPlayer(false);
-      if (hasGeneratedNextPlayer) {
-        setNextPlayerNumber(prev => prev + 1);
-      }
-    }
-  }, [gameState?.phase, gameState?.winner, nextPlayerNumber, hasGeneratedNextPlayer]);
-
   const selectWinner = (playerId) => {
     if (socket && gameState?.phase === 'judging') {
       socket.emit('select-winner', playerId);
@@ -1470,47 +1475,57 @@ export default function CentralDisplay() {
                     <h3 className="font-bold mb-4" style={{ fontSize: '18px' }}>
                       Next Challenger
                     </h3>
-                    <h4 className="font-bold mb-4" style={{ fontSize: '24px' }}>
-                      Player {nextPlayerNumber - 1}
-                    </h4>
-                    
-                    <div className="mb-4">
-                      {qrCodes[nextPlayerNumber - 1] ? (
-                        <img 
-                          src={qrCodes[nextPlayerNumber - 1]} 
-                          alt={`QR Code for Player ${nextPlayerNumber - 1}`}
-                          className="mx-auto border-2 border-black bg-white"
-                          style={{
-                            width: '180px',
-                            height: '180px',
-                            boxShadow: '2px 2px 0px #999'
-                          }}
-                        />
-                      ) : (
-                        <div 
-                          className="mx-auto border-2 border-black bg-gray-100 flex items-center justify-center"
-                          style={{
-                            width: '180px',
-                            height: '180px',
-                            boxShadow: '2px 2px 0px #999'
-                          }}
-                        >
-                          <span style={{ fontSize: '14px' }}>Loading QR...</span>
+
+                    {nextChallengerId ? (
+                      <>
+                        <h4 className="font-bold mb-4" style={{ fontSize: '24px' }}>
+                          Player {nextChallengerId}
+                        </h4>
+
+                        <div className="mb-4">
+                          {qrCodes[String(nextChallengerId)] ? (
+                            <img
+                              src={qrCodes[String(nextChallengerId)]}
+                              alt={`QR Code for Player ${nextChallengerId}`}
+                              className="mx-auto border-2 border-black bg-white"
+                              style={{
+                                width: '180px',
+                                height: '180px',
+                                boxShadow: '2px 2px 0px #999'
+                              }}
+                            />
+                          ) : (
+                            <div
+                              className="mx-auto border-2 border-black bg-gray-100 flex items-center justify-center"
+                              style={{
+                                width: '180px',
+                                height: '180px',
+                                boxShadow: '2px 2px 0px #999'
+                              }}
+                            >
+                              <span style={{ fontSize: '14px' }}>Loading QR...</span>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                    
-                    <p style={{ fontSize: '14px' }} className="mb-3">
-                      Scan to challenge the winner!
-                    </p>
-                    
-                    <div className="border border-black p-2 bg-gray-100" style={{
-                      boxShadow: 'inset 1px 1px 0px #999'
-                    }}>
-                      <p style={{ fontSize: '10px', fontFamily: 'Chicago, monospace' }}>
-                        {window.location.origin}/player/{nextPlayerNumber - 1}
-                      </p>
-                    </div>
+
+                        <p style={{ fontSize: '14px' }} className="mb-3">
+                          Scan to challenge the winner!
+                        </p>
+
+                        <div className="border border-black p-2 bg-gray-100" style={{
+                          boxShadow: 'inset 1px 1px 0px #999'
+                        }}>
+                          <p style={{ fontSize: '10px', fontFamily: 'Chicago, monospace' }}>
+                            {window.location.origin}/player/{nextChallengerId}
+                          </p>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="space-y-3" style={{ fontSize: '14px' }}>
+                        <p>All player slots are currently full.</p>
+                        <p>Ask an admin to add another slot to keep the battles rolling!</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1525,56 +1540,61 @@ export default function CentralDisplay() {
                 <div className="text-6xl mb-8 relative z-10 pt-20">⏳</div>
                 <p style={{ fontSize: '24px' }} className="mb-8 relative z-10">Scan QR codes to join the battle!</p>
 
-                <div className="grid grid-cols-2 gap-8 max-w-2xl mx-auto relative z-10">
-                  {[1, 2].map(playerId => (
-                    <div key={playerId} className="border-2 border-black p-6 bg-white" style={{
-                      boxShadow: '4px 4px 0px #999'
-                    }}>
-                      <h3 className="font-bold mb-4" style={{ fontSize: '24px' }}>
-                        Player {playerId}
-                      </h3>
-                      
-                      <div className="mb-4">
-                        {qrCodes[playerId] ? (
-                          <img 
-                            src={qrCodes[playerId]} 
-                            alt={`QR Code for Player ${playerId}`}
-                            className="mx-auto border-2 border-black"
-                            style={{
-                              width: '150px',
-                              height: '150px',
-                              boxShadow: '2px 2px 0px #999'
-                            }}
-                          />
-                        ) : (
-                          <div 
-                            className="mx-auto border-2 border-black bg-gray-100 flex items-center justify-center"
-                            style={{
-                              width: '150px',
-                              height: '150px',
-                              boxShadow: '2px 2px 0px #999'
-                            }}
-                          >
-                            <span style={{ fontSize: '12px' }}>Loading QR...</span>
-                          </div>
-                        )}
-                      </div>
-                      
-                      <div className="mb-3">
-                        <p style={{ fontSize: '18px' }} className="font-bold">
-                          Status: {gameState?.players?.[playerId]?.connected ? '✓ Connected' : '○ Waiting...'}
-                        </p>
-                      </div>
-                      
-                      <div className="border border-black p-2 bg-gray-100" style={{
-                        boxShadow: 'inset 1px 1px 0px #999'
+                <div className={waitingGridClass}>
+                  {slotIds.map((playerId) => {
+                    const slotKey = String(playerId);
+                    const player = gameState?.players?.[slotKey];
+
+                    return (
+                      <div key={playerId} className="border-2 border-black p-6 bg-white" style={{
+                        boxShadow: '4px 4px 0px #999'
                       }}>
-                        <p style={{ fontSize: '10px', fontFamily: 'Chicago, monospace' }}>
-                          {window.location.origin}/player/{playerId}
-                        </p>
+                        <h3 className="font-bold mb-4" style={{ fontSize: '24px' }}>
+                          Player {playerId}
+                        </h3>
+
+                        <div className="mb-4">
+                          {qrCodes[slotKey] ? (
+                            <img
+                              src={qrCodes[slotKey]}
+                              alt={`QR Code for Player ${playerId}`}
+                              className="mx-auto border-2 border-black"
+                              style={{
+                                width: '150px',
+                                height: '150px',
+                                boxShadow: '2px 2px 0px #999'
+                              }}
+                            />
+                          ) : (
+                            <div
+                              className="mx-auto border-2 border-black bg-gray-100 flex items-center justify-center"
+                              style={{
+                                width: '150px',
+                                height: '150px',
+                                boxShadow: '2px 2px 0px #999'
+                              }}
+                            >
+                              <span style={{ fontSize: '12px' }}>Loading QR...</span>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="mb-3">
+                          <p style={{ fontSize: '18px' }} className="font-bold">
+                            Status: {player?.connected ? '✓ Connected' : '○ Waiting...'}
+                          </p>
+                        </div>
+
+                        <div className="border border-black p-2 bg-gray-100" style={{
+                          boxShadow: 'inset 1px 1px 0px #999'
+                        }}>
+                          <p style={{ fontSize: '10px', fontFamily: 'Chicago, monospace' }}>
+                            {window.location.origin}/player/{playerId}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}

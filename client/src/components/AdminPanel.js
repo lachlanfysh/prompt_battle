@@ -222,6 +222,20 @@ export default function AdminPanel() {
     newSocket.on('game-state', (state) => {
       console.log('Game state updated:', state);
       setGameState(state);
+      setSlotWarning('');
+    });
+
+    newSocket.on('player-slot-removal-blocked', (payload) => {
+      const minimum = Number(payload?.minimumSlots);
+      if (!Number.isFinite(minimum)) {
+        setSlotWarning('Cannot remove player slots right now.');
+        return;
+      }
+      if (minimum <= 2) {
+        setSlotWarning('Need to keep at least two player slots available.');
+      } else {
+        setSlotWarning(`Player slot ${minimum} is still in use—remove that player before closing the slot.`);
+      }
     });
 
     setSocket(newSocket);
@@ -587,44 +601,80 @@ export default function AdminPanel() {
       <div className="p-6 max-w-6xl mx-auto">
         {/* Quick Access URLs */}
         <div className="bg-gray-800 rounded-lg p-6 mb-8">
-          <h2 className="text-xl font-bold mb-4 flex items-center">
-            <Monitor className="h-6 w-6 mr-2" />
-            Quick Access URLs
-          </h2>
-          
-          <div className="grid md:grid-cols-3 gap-4">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-bold flex items-center">
+              <Monitor className="h-6 w-6 mr-2" />
+              Quick Access URLs
+            </h2>
+            <div className="flex items-center space-x-3">
+              <button
+                onClick={handleRemovePlayerSlot}
+                disabled={!socket || !canRemovePlayerSlot}
+                className={`px-3 py-1.5 rounded-md text-sm font-semibold transition-colors ${
+                  socket && canRemovePlayerSlot
+                    ? 'bg-gray-700 hover:bg-gray-600'
+                    : 'bg-gray-600 cursor-not-allowed'
+                }`}
+              >
+                − Remove Slot
+              </button>
+              <button
+                onClick={handleAddPlayerSlot}
+                disabled={!socket}
+                className={`px-3 py-1.5 rounded-md text-sm font-semibold transition-colors ${
+                  socket ? 'bg-blue-600 hover:bg-blue-500' : 'bg-gray-600 cursor-not-allowed'
+                }`}
+              >
+                + Add Player Slot
+              </button>
+            </div>
+          </div>
+
+          {slotWarning && (
+            <div className="mb-4 text-sm text-yellow-300">
+              {slotWarning}
+            </div>
+          )}
+
+          <div className="grid md:grid-cols-3 lg:grid-cols-4 gap-4">
             <div className="bg-gray-700 p-4 rounded-lg">
               <h3 className="font-semibold text-blue-400 mb-2">Central Display</h3>
-              <a 
-                href="/display" 
+              <a
+                href="/display"
                 target="_blank"
                 className="text-sm text-blue-300 hover:underline font-mono break-all"
               >
                 {window.location.origin}/display
               </a>
             </div>
-            
-            <div className="bg-gray-700 p-4 rounded-lg">
-              <h3 className="font-semibold text-green-400 mb-2">Player 1</h3>
-              <a 
-                href="/player/1" 
-                target="_blank"
-                className="text-sm text-green-300 hover:underline font-mono break-all"
-              >
-                {window.location.origin}/player/1
-              </a>
-            </div>
-            
-            <div className="bg-gray-700 p-4 rounded-lg">
-              <h3 className="font-semibold text-purple-400 mb-2">Player 2</h3>
-              <a 
-                href="/player/2" 
-                target="_blank"
-                className="text-sm text-purple-300 hover:underline font-mono break-all"
-              >
-                {window.location.origin}/player/2
-              </a>
-            </div>
+
+            {playerEntries.map(([playerId, player]) => {
+              const accent = getPlayerAccent(playerId);
+              const playerUrl = `/player/${playerId}`;
+              const playerOriginUrl = `${window.location.origin}${playerUrl}`;
+
+              return (
+                <div key={playerId} className="bg-gray-700 p-4 rounded-lg space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className={`font-semibold ${accent.title}`}>Player {playerId}</h3>
+                    <div className="flex items-center space-x-2 text-xs">
+                      <span className={`w-2 h-2 rounded-full ${player?.connected ? 'bg-green-400' : 'bg-gray-500'}`}></span>
+                      <span className={player?.connected ? 'text-green-300' : 'text-gray-400'}>
+                        {player?.connected ? 'Connected' : 'Available'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <a
+                    href={playerUrl}
+                    target="_blank"
+                    className={`text-sm ${accent.link} hover:underline font-mono break-all`}
+                  >
+                    {playerOriginUrl}
+                  </a>
+                </div>
+              );
+            })}
           </div>
         </div>
 
