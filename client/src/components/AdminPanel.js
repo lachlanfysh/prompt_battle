@@ -22,6 +22,7 @@ export default function AdminPanel() {
   const [bracketState, setBracketState] = useState({ bracket: null, currentMatch: null, eliminatedPlayers: [] });
   const [matchReadyInfo, setMatchReadyInfo] = useState(null);
   const [bracketChampion, setBracketChampion] = useState(null);
+  const [slotWarning, setSlotWarning] = useState('');
 
   const presetTargets = [
     // Corporate & Business Humor (accessible)
@@ -475,7 +476,40 @@ export default function AdminPanel() {
     () => playerEntries.filter(([, player]) => player?.connected).length,
     [playerEntries]
   );
-  const expectedPlayers = Math.max(playerEntries.length, 2);
+
+  const totalPlayerSlots = useMemo(() => {
+    const slotsFromState = Number(gameState?.playerSlots);
+    if (Number.isFinite(slotsFromState) && slotsFromState > 0) {
+      return slotsFromState;
+    }
+    return Math.max(playerEntries.length, 2);
+  }, [gameState?.playerSlots, playerEntries.length]);
+
+  const highestActiveSlot = useMemo(() => {
+    return playerEntries.reduce((max, [playerId]) => {
+      const numericId = Number(playerId);
+      if (!Number.isFinite(numericId)) {
+        return max;
+      }
+      return Math.max(max, numericId);
+    }, 0);
+  }, [playerEntries]);
+
+  const minimumSlots = Math.max(2, highestActiveSlot);
+  const canRemovePlayerSlot = totalPlayerSlots > minimumSlots;
+  const expectedPlayers = totalPlayerSlots;
+
+  const handleAddPlayerSlot = useCallback(() => {
+    if (!socket) return;
+    setSlotWarning('');
+    socket.emit('add-player-slot');
+  }, [socket]);
+
+  const handleRemovePlayerSlot = useCallback(() => {
+    if (!socket) return;
+    setSlotWarning('');
+    socket.emit('remove-player-slot');
+  }, [socket]);
 
   const totalMatches = useMemo(() => {
     if (!bracketState.bracket?.rounds) return 0;
