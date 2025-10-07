@@ -9,6 +9,12 @@ export default function PlayerInterface({ playerId }) {
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState(null);
   const [timer, setTimer] = useState(0);
+  const [bracketState, setBracketState] = useState({
+    bracket: null,
+    currentMatch: null,
+    eliminatedPlayers: [],
+    champion: null
+  });
   const previousPhaseRef = useRef();
   const playerKey = String(playerId);
 
@@ -64,6 +70,31 @@ export default function PlayerInterface({ playerId }) {
       setGameState(state);
     });
 
+    const handleBracketUpdated = ({ bracket, currentMatch, eliminatedPlayers }) => {
+      setBracketState(prev => ({
+        bracket: typeof bracket !== 'undefined' ? bracket : prev.bracket,
+        currentMatch: typeof currentMatch !== 'undefined' ? currentMatch : prev.currentMatch,
+        eliminatedPlayers: Array.isArray(eliminatedPlayers)
+          ? eliminatedPlayers.map(id => String(id))
+          : prev.eliminatedPlayers,
+        champion: prev.champion
+      }));
+    };
+
+    const handleBracketFinished = ({ bracket, champion }) => {
+      setBracketState({
+        bracket: bracket ?? null,
+        currentMatch: null,
+        eliminatedPlayers: Array.isArray(bracket?.eliminatedPlayers)
+          ? bracket.eliminatedPlayers.map(id => String(id))
+          : [],
+        champion: champion != null ? String(champion) : null
+      });
+    };
+
+    newSocket.on('bracket-updated', handleBracketUpdated);
+    newSocket.on('bracket-finished', handleBracketFinished);
+
     newSocket.on('battle-started', ({ duration }) => {
       setTimer(duration);
       setPrompt('');
@@ -88,6 +119,8 @@ export default function PlayerInterface({ playerId }) {
     setSocket(newSocket);
 
     return () => {
+      newSocket.off('bracket-updated', handleBracketUpdated);
+      newSocket.off('bracket-finished', handleBracketFinished);
       newSocket.close();
     };
   }, [playerId]);
@@ -105,17 +138,203 @@ export default function PlayerInterface({ playerId }) {
     previousPhaseRef.current = currentPhase;
   }, [gameState?.phase]);
 
+  useEffect(() => {
+    if (!gameState) return;
+
+    setBracketState(prev => {
+      const hasBracket = Object.prototype.hasOwnProperty.call(gameState, 'bracket');
+      const hasCurrentMatch = Object.prototype.hasOwnProperty.call(gameState, 'currentMatch');
+      const hasEliminated = Object.prototype.hasOwnProperty.call(gameState, 'eliminatedPlayers');
+
+      const nextBracket = hasBracket ? gameState.bracket : prev.bracket;
+      const nextEliminated = Array.isArray(gameState.eliminatedPlayers)
+        ? gameState.eliminatedPlayers.map(id => String(id))
+        : (hasEliminated ? [] : prev.eliminatedPlayers);
+      const nextChampion = gameState.winner != null
+        ? String(gameState.winner)
+        : (hasBracket && !gameState.bracket ? null : prev.champion);
+
+      return {
+        bracket: nextBracket,
+        currentMatch: hasCurrentMatch ? gameState.currentMatch : prev.currentMatch,
+        eliminatedPlayers: nextEliminated,
+        champion: nextChampion
+      };
+    });
+  }, [gameState]);
+
+  const DEFAULT_ROUND_LABELS = useMemo(() => ([
+    { players: 2, label: 'Final' },
+    { players: 4, label: 'Semifinals' },
+    { players: 8, label: 'Quarterfinals' },
+    { players: 16, label: 'Round of 16' },
+    { players: 32, label: 'Round of 32' },
+    { players: 64, label: 'Round of 64' }
+  ]), []);
+
+  const getRoundLabel = useCallback((round, roundIndex, totalRounds) => {
+    if (round?.name) {
+      return round.name;
+    }
+
+    const matchCount = Array.isArray(round?.matches) ? round.matches.length : 0;
+    const playerCount = matchCount * 2;
+    const mappedLabel = DEFAULT_ROUND_LABELS.find(entry => entry.players === playerCount);
+    if (mappedLabel) {
+      return mappedLabel.label;
+    }
+
+    if (totalRounds - roundIndex === 1) {
+      return 'Final';
+    }
+    if (totalRounds - roundIndex === 2) {
+      return 'Semifinals';
+    }
+
+    return `Round ${roundIndex + 1}`;
+  }, [DEFAULT_ROUND_LABELS]);
+
+  const bracketRounds = useMemo(() => (
+    Array.isArray(bracketState.bracket?.rounds) ? bracketState.bracket.rounds : []
+  ), [bracketState.bracket]);
+
+  const isKnockoutMode = (gameState?.competitionMode === 'knockout') || bracketRounds.length > 0;
+
+  const eliminatedSet = useMemo(() => new Set(
+    Array.isArray(bracketState.eliminatedPlayers)
+      ? bracketState.eliminatedPlayers.map(id => String(id))
+      : []
+  ), [bracketState.eliminatedPlayers]);
+
+  const isPlayerEliminated = eliminatedSet.has(playerKey);
+
+  const playerBracketMatches = useMemo(() => {
+    if (!bracketRounds.length) return { nextMatch: null, lastCompleted: null };
+
+    let nextMatch = null;
+    let lastCompleted = null;
+
+    bracketRounds.forEach((round, roundIndex) => {
+      const matches = Array.isArray(round?.matches) ? round.matches : [];
+      matches.forEach((match, matchIndex) => {
+        if (!Array.isArray(match?.players)) return;
+        const containsPlayer = match.players.some(p => String(p) === playerKey);
+        if (!containsPlayer) return;
+
+        const descriptor = { round, roundIndex, match, matchIndex };
+
+        if (match.status === 'completed') {
+          if (!lastCompleted || roundIndex >= lastCompleted.roundIndex) {
+            lastCompleted = descriptor;
+          }
+        } else if (!nextMatch) {
+          nextMatch = descriptor;
+        }
+      });
+    });
+
+    return { nextMatch, lastCompleted };
+  }, [bracketRounds, playerKey]);
+
+  const normalizeRoundLabel = useCallback((label) => {
+    if (!label) return '';
+    if (/Finals$/i.test(label)) {
+      return label.replace(/Finals$/i, 'Final');
+    }
+    return label;
+  }, []);
+
+  const playerBracketPath = useMemo(() => {
+    if (!isKnockoutMode || (!playerBracketMatches.nextMatch && !playerBracketMatches.lastCompleted)) {
+      return null;
+    }
+
+    const totalRounds = bracketRounds.length;
+    const makeOpponentLabel = (match) => {
+      if (!Array.isArray(match?.players)) return 'TBD';
+      const opponent = match.players
+        .map(p => (p != null ? String(p) : null))
+        .find(id => id && id !== playerKey);
+      return opponent ? `Player ${opponent}` : 'TBD';
+    };
+
+    if (isPlayerEliminated) {
+      const lastMatch = playerBracketMatches.lastCompleted;
+      if (!lastMatch) {
+        return {
+          status: 'Eliminated',
+          advancement: null
+        };
+      }
+
+      const roundLabel = getRoundLabel(lastMatch.round, lastMatch.roundIndex, totalRounds);
+      const opponentLabel = makeOpponentLabel(lastMatch.match);
+      const winnerId = lastMatch.match?.winner != null ? String(lastMatch.match.winner) : null;
+      const eliminatedBy = winnerId && winnerId !== playerKey ? ` by Player ${winnerId}` : '';
+
+      return {
+        status: `Eliminated in ${roundLabel}${eliminatedBy}`,
+        advancement: opponentLabel ? `Last opponent: ${opponentLabel}` : null
+      };
+    }
+
+    if (playerBracketMatches.nextMatch) {
+      const { round, roundIndex, match } = playerBracketMatches.nextMatch;
+      const roundLabel = normalizeRoundLabel(getRoundLabel(round, roundIndex, totalRounds));
+      const opponentLabel = makeOpponentLabel(match);
+      const nextRound = bracketRounds[roundIndex + 1];
+      const nextRoundLabel = nextRound
+        ? normalizeRoundLabel(getRoundLabel(nextRound, roundIndex + 1, totalRounds))
+        : null;
+
+      return {
+        status: `${roundLabel} vs ${opponentLabel}`,
+        advancement: nextRoundLabel ? `Winner advances to ${nextRoundLabel}` : 'Winner becomes Champion'
+      };
+    }
+
+    const lastMatch = playerBracketMatches.lastCompleted;
+    if (lastMatch && bracketState.champion === playerKey) {
+      return {
+        status: 'Champion crowned!',
+        advancement: 'Congratulations on winning the bracket!'
+      };
+    }
+
+    if (lastMatch) {
+      const nextRound = bracketRounds[lastMatch.roundIndex + 1];
+      if (nextRound) {
+        const waitingLabel = normalizeRoundLabel(getRoundLabel(nextRound, lastMatch.roundIndex + 1, totalRounds));
+        return {
+          status: `Waiting for ${waitingLabel} matchup`,
+          advancement: 'Awaiting opponent advancement'
+        };
+      }
+    }
+
+    return null;
+  }, [
+    bracketRounds,
+    getRoundLabel,
+    isKnockoutMode,
+    isPlayerEliminated,
+    normalizeRoundLabel,
+    playerBracketMatches,
+    playerKey,
+    bracketState.champion
+  ]);
+
   const handlePromptChange = useCallback((e) => {
     const value = e.target.value;
     setPrompt(value);
-    
-    if (socket && gameState?.phase === 'battling') {
+
+    if (socket && gameState?.phase === 'battling' && !isPlayerEliminated) {
       socket.emit('prompt-update', { playerId, prompt: value });
     }
-  }, [socket, gameState?.phase, playerId]);
+  }, [socket, gameState?.phase, playerId, isPlayerEliminated]);
 
   const handleReady = () => {
-    if (socket) {
+    if (socket && !isPlayerEliminated) {
       socket.emit('player-ready', playerId);
     }
   };
@@ -127,6 +346,10 @@ export default function PlayerInterface({ playerId }) {
   };
 
   const getPhaseDisplay = () => {
+    if (isPlayerEliminated) {
+      return 'You have been eliminated from the bracket.';
+    }
+
     switch (gameState?.phase) {
       case 'waiting':
         return 'Waiting for game to start...';
@@ -262,7 +485,7 @@ export default function PlayerInterface({ playerId }) {
                       <span>Your Rank</span>
                       <span className="font-bold">{playerRank > 0 ? `#${playerRank}` : '—'}</span>
                     </div>
-                    {pointGoal && (
+                    {pointGoal && !isKnockoutMode && (
                       <div className="flex justify-between mb-1">
                         <span>Point Goal</span>
                         <span className="font-bold">{pointGoal}</span>
@@ -280,7 +503,7 @@ export default function PlayerInterface({ playerId }) {
                         {gameState?.competitionActive ? Math.max(1, currentRoundNumber || 1) : roundsPlayed}
                       </span>
                     </div>
-                    {roundGoal && (
+                    {roundGoal && !isKnockoutMode && (
                       <div className="flex justify-between mb-1">
                         <span>Round Goal</span>
                         <span className="font-bold">{roundGoal}</span>
@@ -289,34 +512,52 @@ export default function PlayerInterface({ playerId }) {
                   </div>
                 </div>
 
-                {roundGoal && (
-                  <div className="mt-3">
-                    <div className="flex justify-between" style={{ fontSize: '9px' }}>
-                      <span>Round Progress</span>
-                      <span>{Math.min(roundsPlayed, roundGoal)}/{roundGoal}</span>
-                    </div>
-                    <div className="h-2 border border-black bg-gray-200">
-                      <div
-                        className="h-full bg-blue-500"
-                        style={{ width: `${Math.min(100, Math.round(roundProgress * 100))}%` }}
-                      ></div>
-                    </div>
+                {isKnockoutMode ? (
+                  <div className="mt-3 border border-dashed border-black p-2 bg-gray-100" style={{ fontSize: '10px' }}>
+                    <div className="font-bold mb-1">Bracket Path</div>
+                    {playerBracketPath ? (
+                      <>
+                        <div>{playerBracketPath.status}</div>
+                        {playerBracketPath.advancement && (
+                          <div className="mt-1 text-gray-700">{playerBracketPath.advancement}</div>
+                        )}
+                      </>
+                    ) : (
+                      <div>Bracket in setup. Await further match assignments.</div>
+                    )}
                   </div>
-                )}
+                ) : (
+                  <>
+                    {roundGoal && (
+                      <div className="mt-3">
+                        <div className="flex justify-between" style={{ fontSize: '9px' }}>
+                          <span>Round Progress</span>
+                          <span>{Math.min(roundsPlayed, roundGoal)}/{roundGoal}</span>
+                        </div>
+                        <div className="h-2 border border-black bg-gray-200">
+                          <div
+                            className="h-full bg-blue-500"
+                            style={{ width: `${Math.min(100, Math.round(roundProgress * 100))}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                    )}
 
-                {pointGoal && (
-                  <div className="mt-3">
-                    <div className="flex justify-between" style={{ fontSize: '9px' }}>
-                      <span>Point Progress</span>
-                      <span>{leaderScore}/{pointGoal} pts</span>
-                    </div>
-                    <div className="h-2 border border-black bg-gray-200">
-                      <div
-                        className="h-full bg-green-500"
-                        style={{ width: `${Math.min(100, Math.round(pointProgress * 100))}%` }}
-                      ></div>
-                    </div>
-                  </div>
+                    {pointGoal && (
+                      <div className="mt-3">
+                        <div className="flex justify-between" style={{ fontSize: '9px' }}>
+                          <span>Point Progress</span>
+                          <span>{leaderScore}/{pointGoal} pts</span>
+                        </div>
+                        <div className="h-2 border border-black bg-gray-200">
+                          <div
+                            className="h-full bg-green-500"
+                            style={{ width: `${Math.min(100, Math.round(pointProgress * 100))}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
 
                 {standings.length > 0 && (
@@ -350,12 +591,12 @@ export default function PlayerInterface({ playerId }) {
                   value={prompt}
                   onChange={handlePromptChange}
                   placeholder="Write your image generation prompt here..."
-                  disabled={gameState?.phase !== 'battling'}
+                  disabled={gameState?.phase !== 'battling' || isPlayerEliminated}
                   className="w-full h-32 p-2 border-2 border-black resize-none"
                   style={{
                     fontFamily: 'Chicago, "SF Pro Display", system-ui, sans-serif',
                     fontSize: '11px',
-                    backgroundColor: gameState?.phase === 'battling' ? 'white' : '#f0f0f0',
+                    backgroundColor: gameState?.phase === 'battling' && !isPlayerEliminated ? 'white' : '#f0f0f0',
                     boxShadow: 'inset 2px 2px 0px #999'
                   }}
                   maxLength={500}
@@ -377,6 +618,7 @@ export default function PlayerInterface({ playerId }) {
                     fontSize: '12px',
                     boxShadow: '2px 2px 0px #999'
                   }}
+                  disabled={isPlayerEliminated}
                 >
                   I'm Ready!
                 </button>
