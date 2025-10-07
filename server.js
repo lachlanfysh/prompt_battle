@@ -196,6 +196,10 @@ let gameState = {
   roundsPlayed: 0,
   scores: {},
   roundHistory: [],
+  competitionMode: 'series',
+  bracket: null,
+  currentMatch: null,
+  eliminatedPlayers: [],
   competitionConfig: {
     roundLimit: null,
     pointLimit: null
@@ -209,6 +213,180 @@ function ensureScoreEntry(playerId) {
   if (!gameState.scores[playerId]) {
     gameState.scores[playerId] = 0;
   }
+}
+
+function normalizeBracket(bracketData = {}) {
+  const rounds = Array.isArray(bracketData.rounds) ? bracketData.rounds : [];
+  return {
+    rounds: rounds.map((round, roundIndex) => ({
+      name: round?.name || `Round ${roundIndex + 1}`,
+      matches: (Array.isArray(round?.matches) ? round.matches : []).map((match, matchIndex) => {
+        let players = Array.isArray(match?.players) ? match.players.slice(0, 2) : [];
+        if (players.length < 2) {
+          players = [players[0] ?? null, players[1] ?? null];
+        }
+
+        return {
+          id: match?.id || `${roundIndex}-${matchIndex}`,
+          players,
+          winner: match?.winner || null,
+          status: match?.status || 'pending'
+        };
+      })
+    }))
+  };
+}
+
+function findNextPendingMatch(bracket) {
+  if (!bracket?.rounds) {
+    return null;
+  }
+
+  for (let roundIndex = 0; roundIndex < bracket.rounds.length; roundIndex += 1) {
+    const round = bracket.rounds[roundIndex];
+    if (!round?.matches) continue;
+
+    for (let matchIndex = 0; matchIndex < round.matches.length; matchIndex += 1) {
+      const match = round.matches[matchIndex];
+      if (match && match.status !== 'completed' && match.players?.filter(Boolean).length === 2) {
+        return { roundIndex, matchIndex };
+      }
+    }
+  }
+
+  return null;
+}
+
+function getMatch(bracket, locator) {
+  if (!bracket || !locator) return null;
+  const { roundIndex, matchIndex } = locator;
+  return bracket.rounds?.[roundIndex]?.matches?.[matchIndex] || null;
+}
+
+function emitBracketState() {
+  io.emit('bracket-updated', {
+    bracket: gameState.bracket,
+    currentMatch: gameState.currentMatch,
+    eliminatedPlayers: gameState.eliminatedPlayers
+  });
+  io.emit('game-state', gameState);
+}
+
+function setCurrentMatch(locator) {
+  gameState.currentMatch = locator;
+  if (!locator) {
+    return;
+  }
+
+  const match = getMatch(gameState.bracket, locator);
+  if (match) {
+    io.emit('match-ready', {
+      roundIndex: locator.roundIndex,
+      matchIndex: locator.matchIndex,
+      match
+    });
+  }
+}
+
+function resetBracketState() {
+  gameState.bracket = null;
+  gameState.currentMatch = null;
+  gameState.eliminatedPlayers = [];
+  gameState.competitionMode = 'series';
+  gameState.competitionActive = false;
+  gameState.winner = null;
+  gameState.roundNumber = 0;
+  gameState.roundsPlayed = 0;
+  gameState.roundHistory = [];
+  gameState.scores = {};
+  gameState.competitionConfig = {
+    roundLimit: null,
+    pointLimit: null
+  };
+}
+
+function resetBracketProgress(bracket) {
+  if (!bracket?.rounds) return;
+  bracket.rounds.forEach(round => {
+    if (!Array.isArray(round?.matches)) return;
+    round.matches.forEach(match => {
+      if (!match) return;
+      match.winner = null;
+      match.status = 'pending';
+    });
+  });
+}
+
+function advanceToNextMatch() {
+  const nextMatch = findNextPendingMatch(gameState.bracket);
+  setCurrentMatch(nextMatch);
+  if (!nextMatch) {
+    io.emit('bracket-finished', {
+      bracket: gameState.bracket,
+      champion: gameState.winner
+    });
+  }
+  emitBracketState();
+}
+
+function handleBracketProgression(winnerId) {
+  if (!gameState.bracket || !gameState.currentMatch) {
+    return;
+  }
+
+  const { roundIndex, matchIndex } = gameState.currentMatch;
+  const match = getMatch(gameState.bracket, gameState.currentMatch);
+  if (!match) {
+    return;
+  }
+
+  if (!winnerId) {
+    advanceToNextMatch();
+    return;
+  }
+
+  match.winner = winnerId;
+  match.status = 'completed';
+
+  const [playerA, playerB] = match.players;
+  const loser = [playerA, playerB].find(player => player && player !== winnerId);
+  if (loser && !gameState.eliminatedPlayers.includes(loser)) {
+    gameState.eliminatedPlayers.push(loser);
+  }
+
+  const targetSnapshot = gameState.target;
+  gameState.roundsPlayed += 1;
+  gameState.roundHistory.push({
+    round: `R${roundIndex + 1}-M${matchIndex + 1}`,
+    winner: winnerId,
+    target: targetSnapshot,
+    mode: 'knockout'
+  });
+
+  const nextRound = gameState.bracket.rounds[roundIndex + 1];
+  if (nextRound && nextRound.matches) {
+    const targetMatchIndex = Math.floor(matchIndex / 2);
+    const targetMatch = nextRound.matches[targetMatchIndex];
+    if (targetMatch) {
+      const slot = matchIndex % 2;
+      if (!Array.isArray(targetMatch.players)) {
+        targetMatch.players = [];
+      }
+      targetMatch.players[slot] = winnerId;
+      if (targetMatch.players.length < 2) {
+        targetMatch.players = [targetMatch.players[0] || null, targetMatch.players[1] || null];
+      }
+    }
+    resetRoundState({ clearTarget: true, resetWinner: true });
+    gameState.phase = 'waiting';
+    gameState.roundNumber = gameState.roundsPlayed + 1;
+  } else {
+    gameState.winner = winnerId;
+    gameState.competitionActive = false;
+    gameState.phase = 'finished';
+  }
+
+  advanceToNextMatch();
 }
 
 function resetRoundState({ clearTarget = false, resetWinner = false } = {}) {
@@ -302,6 +480,20 @@ io.on('connection', (socket) => {
     console.log('Central display connected');
     socket.join('display');
     socket.emit('game-state', gameState);
+    if (gameState.bracket) {
+      socket.emit('bracket-updated', {
+        bracket: gameState.bracket,
+        currentMatch: gameState.currentMatch,
+        eliminatedPlayers: gameState.eliminatedPlayers
+      });
+      if (gameState.currentMatch) {
+        socket.emit('match-ready', {
+          roundIndex: gameState.currentMatch.roundIndex,
+          matchIndex: gameState.currentMatch.matchIndex,
+          match: getMatch(gameState.bracket, gameState.currentMatch)
+        });
+      }
+    }
   });
 
   // Admin panel connects
@@ -309,6 +501,20 @@ io.on('connection', (socket) => {
     console.log('Admin panel connected');
     socket.join('admin');
     socket.emit('game-state', gameState);
+    if (gameState.bracket) {
+      socket.emit('bracket-updated', {
+        bracket: gameState.bracket,
+        currentMatch: gameState.currentMatch,
+        eliminatedPlayers: gameState.eliminatedPlayers
+      });
+      if (gameState.currentMatch) {
+        socket.emit('match-ready', {
+          roundIndex: gameState.currentMatch.roundIndex,
+          matchIndex: gameState.currentMatch.matchIndex,
+          match: getMatch(gameState.bracket, gameState.currentMatch)
+        });
+      }
+    }
   });
 
   // Real-time prompt updates
@@ -337,7 +543,13 @@ io.on('connection', (socket) => {
     const pointLimit = config.pointLimit !== undefined && config.pointLimit !== ''
       ? Number(config.pointLimit)
       : null;
+    const mode = config.competitionMode === 'knockout' ? 'knockout' : 'series';
 
+    if (mode === 'series') {
+      resetBracketState();
+    }
+
+    gameState.competitionMode = mode;
     gameState.competitionActive = true;
     gameState.roundNumber = 1;
     gameState.roundsPlayed = 0;
@@ -354,12 +566,63 @@ io.on('connection', (socket) => {
     resetRoundState({ clearTarget: true, resetWinner: true });
     gameState.phase = 'waiting';
 
+    if (mode === 'knockout' && gameState.bracket) {
+      resetBracketProgress(gameState.bracket);
+      gameState.eliminatedPlayers = [];
+      setCurrentMatch(findNextPendingMatch(gameState.bracket));
+    }
+
     io.emit('competition-started', {
       roundNumber: gameState.roundNumber,
       config: gameState.competitionConfig,
-      scores: gameState.scores
+      scores: gameState.scores,
+      competitionMode: gameState.competitionMode
     });
-    io.emit('game-state', gameState);
+    if (mode === 'knockout') {
+      emitBracketState();
+    } else {
+      io.emit('game-state', gameState);
+    }
+  });
+
+  socket.on('create-bracket', (bracketData = {}) => {
+    const normalized = normalizeBracket(bracketData);
+    resetBracketProgress(normalized);
+    gameState.bracket = normalized;
+    gameState.competitionMode = 'knockout';
+    gameState.competitionActive = true;
+    gameState.roundNumber = 1;
+    gameState.roundsPlayed = 0;
+    gameState.roundHistory = [];
+    gameState.scores = {};
+    gameState.eliminatedPlayers = [];
+    gameState.competitionConfig = {
+      roundLimit: null,
+      pointLimit: null
+    };
+    resetRoundState({ clearTarget: true, resetWinner: true });
+    gameState.phase = 'waiting';
+
+    const firstMatch = findNextPendingMatch(gameState.bracket);
+    setCurrentMatch(firstMatch);
+    emitBracketState();
+  });
+
+  socket.on('advance-match', ({ winnerId } = {}) => {
+    if (gameState.competitionMode !== 'knockout' || !gameState.bracket) {
+      return;
+    }
+
+    if (winnerId) {
+      handleBracketProgression(winnerId);
+    } else {
+      advanceToNextMatch();
+    }
+  });
+
+  socket.on('reset-bracket', () => {
+    resetBracketState();
+    emitBracketState();
   });
 
   socket.on('next-round', () => {
@@ -411,6 +674,18 @@ io.on('connection', (socket) => {
     gameState.generatedImages = {};
     gameState.winner = null; // Clear previous winner
 
+    if (gameState.competitionMode === 'knockout' && gameState.currentMatch) {
+      const match = getMatch(gameState.bracket, gameState.currentMatch);
+      if (match) {
+        match.status = 'in-progress';
+        io.emit('bracket-updated', {
+          bracket: gameState.bracket,
+          currentMatch: gameState.currentMatch,
+          eliminatedPlayers: gameState.eliminatedPlayers
+        });
+      }
+    }
+
     io.emit('battle-started', { duration });
     io.emit('game-state', gameState);
 
@@ -428,26 +703,40 @@ io.on('connection', (socket) => {
 
   socket.on('select-winner', (winnerId) => {
     clearBattleTimer();
-    gameState.winner = winnerId;
     gameState.phase = 'finished';
 
-    if (gameState.competitionActive) {
-      ensureScoreEntry(winnerId);
-      if (winnerId) {
-        gameState.scores[winnerId] += 1;
-      }
-      gameState.roundsPlayed += 1;
-      gameState.roundHistory.push({
-        round: gameState.roundNumber || gameState.roundsPlayed,
-        winner: winnerId,
-        target: gameState.target
-      });
+    const isKnockout = gameState.competitionMode === 'knockout';
+    let handledByBracket = false;
+
+    if (!isKnockout) {
+      gameState.winner = winnerId;
     }
 
-    io.emit('game-state', gameState);
+    if (gameState.competitionActive) {
+      if (isKnockout) {
+        handledByBracket = true;
+        handleBracketProgression(winnerId);
+      } else {
+        ensureScoreEntry(winnerId);
+        if (winnerId) {
+          gameState.scores[winnerId] += 1;
+        }
+        gameState.roundsPlayed += 1;
+        gameState.roundHistory.push({
+          round: gameState.roundNumber || gameState.roundsPlayed,
+          winner: winnerId,
+          target: gameState.target,
+          mode: 'series'
+        });
+      }
+    }
+
+    if (!handledByBracket) {
+      io.emit('game-state', gameState);
+    }
     io.emit('winner-selected', winnerId);
 
-    if (!gameState.competitionActive) {
+    if (!gameState.competitionActive || isKnockout) {
       return;
     }
 
@@ -481,26 +770,19 @@ io.on('connection', (socket) => {
       }
     });
 
-    gameState = {
-      ...gameState,
-      phase: 'waiting',
-      prompts: {},
-      generatedImages: {},
-      target: null,
-      timer: 0,
-      winner: null,
-      competitionActive: false,
-      roundNumber: 0,
-      roundsPlayed: 0,
-      scores: {},
-      roundHistory: [],
-      competitionConfig: {
-        roundLimit: null,
-        pointLimit: null
-      }
+    resetBracketState();
+    gameState.phase = 'waiting';
+    gameState.prompts = {};
+    gameState.generatedImages = {};
+    gameState.target = null;
+    gameState.timer = 0;
+    gameState.winner = null;
+    gameState.competitionConfig = {
+      roundLimit: null,
+      pointLimit: null
     };
 
-    io.emit('game-state', gameState);
+    emitBracketState();
     io.emit('game-reset'); // New event to signal complete reset
   });
 
