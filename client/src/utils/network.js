@@ -1,8 +1,17 @@
-export const getSocketURL = () => {
+const buildBaseUrl = (portOverride = null) => {
   const protocol = window.location.protocol;
   const hostname = window.location.hostname;
-  const port = process.env.NODE_ENV === 'production' ? window.location.port : '3001';
-  return `${protocol}//${hostname}:${port}`;
+  const port = portOverride !== null ? portOverride : window.location.port;
+  const portSegment = port ? `:${port}` : '';
+  return `${protocol}//${hostname}${portSegment}`;
+};
+
+export const getSocketURL = () => {
+  if (process.env.NODE_ENV === 'production') {
+    return buildBaseUrl();
+  }
+
+  return buildBaseUrl('3001');
 };
 
 export const getProxiedImageUrl = (originalUrl) => {
@@ -10,8 +19,8 @@ export const getProxiedImageUrl = (originalUrl) => {
 
   if (originalUrl.startsWith('https://oaidalleapiprodscus.blob.core.windows.net/')) {
     const baseUrl = process.env.NODE_ENV === 'production'
-      ? window.location.origin
-      : `${window.location.protocol}//${window.location.hostname}:3001`;
+      ? buildBaseUrl()
+      : buildBaseUrl('3001');
     return `${baseUrl}/api/proxy-image?url=${encodeURIComponent(originalUrl)}`;
   }
 
