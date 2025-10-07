@@ -476,6 +476,19 @@ export default function CentralDisplay() {
     () => Array.from({ length: playerSlotCount }, (_, idx) => idx + 1),
     [playerSlotCount]
   );
+
+  const waitingGridClass = useMemo(() => {
+    if (playerSlotCount <= 2) {
+      return 'relative z-10 grid grid-cols-1 sm:grid-cols-2 gap-8 max-w-3xl mx-auto px-6';
+    }
+    if (playerSlotCount <= 4) {
+      return 'relative z-10 grid grid-cols-1 sm:grid-cols-2 gap-10 max-w-4xl mx-auto px-6';
+    }
+    if (playerSlotCount <= 6) {
+      return 'relative z-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-10 max-w-5xl mx-auto px-6';
+    }
+    return 'relative z-10 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8 max-w-6xl mx-auto px-6';
+  }, [playerSlotCount]);
   
   // Update player box positions for flocking birds
   useEffect(() => {
