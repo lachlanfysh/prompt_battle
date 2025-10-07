@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Settings, Play, RotateCcw, Timer, Users, Monitor, Trophy, Flag, Target } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { Settings, Play, RotateCcw, Timer, Users, Monitor, Trophy, Flag, Target, GitBranch, Shuffle, MoveVertical, Crown } from 'lucide-react';
 import io from 'socket.io-client';
 import { getSocketURL, getProxiedImageUrl } from '../utils/network';
 
@@ -16,7 +16,12 @@ export default function AdminPanel() {
   const [healthStatus, setHealthStatus] = useState(null);
   const [roundLimit, setRoundLimit] = useState('');
   const [pointLimit, setPointLimit] = useState('');
-  const [slotWarning, setSlotWarning] = useState('');
+  const [competitionModeSelection, setCompetitionModeSelection] = useState('series');
+  const [seedOrder, setSeedOrder] = useState([]);
+  const [draggedSeedIndex, setDraggedSeedIndex] = useState(null);
+  const [bracketState, setBracketState] = useState({ bracket: null, currentMatch: null, eliminatedPlayers: [] });
+  const [matchReadyInfo, setMatchReadyInfo] = useState(null);
+  const [bracketChampion, setBracketChampion] = useState(null);
 
   const presetTargets = [
     // Corporate & Business Humor (accessible)
@@ -63,6 +68,111 @@ export default function AdminPanel() {
     'A chicken crossing the road but stopping to ask for directions',
     'A cow giving a presentation on why the grass really is greener on the other side'
   ];
+
+  const getRoundName = useCallback((roundIndex, totalRounds) => {
+    const roundsRemaining = totalRounds - roundIndex;
+    if (roundsRemaining === 1) return 'Final';
+    if (roundsRemaining === 2) return 'Semifinals';
+    if (roundsRemaining === 3) return 'Quarterfinals';
+    return `Round ${roundIndex + 1}`;
+  }, []);
+
+  const buildBracketFromSeeds = useCallback((seeds) => {
+    const uniqueSeeds = Array.from(new Set(seeds.map(seed => (seed != null ? String(seed) : null)).filter(Boolean)));
+    if (uniqueSeeds.length < 2) {
+      return null;
+    }
+
+    const bracketSize = Math.pow(2, Math.ceil(Math.log2(uniqueSeeds.length)));
+    const paddedSeeds = [...uniqueSeeds];
+    while (paddedSeeds.length < bracketSize) {
+      paddedSeeds.push(null);
+    }
+
+    const totalRounds = Math.log2(bracketSize);
+    const rounds = [];
+
+    const buildRound = (playersForRound, roundIndex) => {
+      const matches = [];
+      for (let i = 0; i < playersForRound.length; i += 2) {
+        matches.push({
+          id: `${roundIndex}-${Math.floor(i / 2)}`,
+          players: [playersForRound[i] ?? null, playersForRound[i + 1] ?? null],
+          status: 'pending',
+          winner: null
+        });
+      }
+
+      rounds.push({
+        name: getRoundName(roundIndex, totalRounds),
+        matches
+      });
+
+      if (roundIndex + 1 < totalRounds) {
+        const nextRoundPlayers = matches.map(match => {
+          const entrants = (match.players || []).filter(Boolean);
+          if (entrants.length === 1) {
+            return entrants[0];
+          }
+          return null;
+        });
+        buildRound(nextRoundPlayers, roundIndex + 1);
+      }
+    };
+
+    buildRound(paddedSeeds, 0);
+
+    return { rounds };
+  }, [getRoundName]);
+
+  const getPlayerLabel = useCallback((playerId) => {
+    if (!playerId) return 'TBD';
+    const record = gameState?.players?.[playerId];
+    if (record?.name) {
+      return `${record.name} (P${playerId})`;
+    }
+    return `Player ${playerId}`;
+  }, [gameState?.players]);
+
+  const playerEntries = useMemo(() => {
+    const entries = Object.entries(gameState?.players || {});
+    return entries.sort((a, b) => {
+      const aNum = Number(a[0]);
+      const bNum = Number(b[0]);
+      if (!Number.isNaN(aNum) && !Number.isNaN(bNum)) {
+        return aNum - bNum;
+      }
+      return a[0].localeCompare(b[0]);
+    });
+  }, [gameState?.players]);
+
+  useEffect(() => {
+    setSeedOrder(prev => {
+      const availableIds = playerEntries.map(([playerId]) => String(playerId));
+      const seen = new Set();
+      const filtered = [];
+
+      prev.forEach(id => {
+        if (availableIds.includes(id) && !seen.has(id)) {
+          filtered.push(id);
+          seen.add(id);
+        }
+      });
+
+      availableIds.forEach(id => {
+        if (!seen.has(id)) {
+          filtered.push(id);
+          seen.add(id);
+        }
+      });
+
+      if (filtered.length === prev.length && filtered.every((id, index) => id === prev[index])) {
+        return prev;
+      }
+
+      return filtered;
+    });
+  }, [playerEntries]);
 
   // Fetch available challenge images
   useEffect(() => {
@@ -136,11 +246,81 @@ export default function AdminPanel() {
   }, []);
 
   useEffect(() => {
+    if (!socket) return;
+
+    const handleBracketUpdated = (payload = {}) => {
+      setBracketState({
+        bracket: payload.bracket || null,
+        currentMatch: payload.currentMatch || null,
+        eliminatedPlayers: payload.eliminatedPlayers || []
+      });
+
+      if (payload.bracket) {
+        setCompetitionModeSelection('knockout');
+      } else {
+        setMatchReadyInfo(null);
+      }
+    };
+
+    const handleMatchReadyEvent = (payload) => {
+      setMatchReadyInfo(payload);
+    };
+
+    const handleBracketFinished = (payload = {}) => {
+      setBracketChampion(payload.champion || null);
+      setMatchReadyInfo(null);
+    };
+
+    socket.on('bracket-updated', handleBracketUpdated);
+    socket.on('match-ready', handleMatchReadyEvent);
+    socket.on('bracket-finished', handleBracketFinished);
+
+    return () => {
+      socket.off('bracket-updated', handleBracketUpdated);
+      socket.off('match-ready', handleMatchReadyEvent);
+      socket.off('bracket-finished', handleBracketFinished);
+    };
+  }, [socket]);
+
+  useEffect(() => {
     if (!gameState?.competitionActive) return;
     const { roundLimit: rl, pointLimit: pl } = gameState.competitionConfig || {};
     setRoundLimit(rl ?? '');
     setPointLimit(pl ?? '');
   }, [gameState?.competitionActive, gameState?.competitionConfig?.roundLimit, gameState?.competitionConfig?.pointLimit]);
+
+  useEffect(() => {
+    if (gameState?.bracket) {
+      setBracketState(prev => {
+        if (
+          prev.bracket === gameState.bracket &&
+          prev.currentMatch === gameState.currentMatch &&
+          prev.eliminatedPlayers === gameState.eliminatedPlayers
+        ) {
+          return prev;
+        }
+
+        return {
+          bracket: gameState.bracket,
+          currentMatch: gameState.currentMatch || null,
+          eliminatedPlayers: gameState.eliminatedPlayers || []
+        };
+      });
+    } else {
+      setBracketState(prev => (prev.bracket ? { bracket: null, currentMatch: null, eliminatedPlayers: [] } : prev));
+    }
+  }, [gameState?.bracket, gameState?.currentMatch, gameState?.eliminatedPlayers]);
+
+  useEffect(() => {
+    const mode = gameState?.competitionMode || 'series';
+    if (gameState?.competitionActive || mode === 'knockout' || gameState?.bracket) {
+      setCompetitionModeSelection(mode);
+    }
+
+    if (!gameState?.competitionActive && !gameState?.bracket) {
+      setBracketChampion(null);
+    }
+  }, [gameState?.competitionMode, gameState?.competitionActive, gameState?.bracket]);
 
   const setTargetPrompt = () => {
     if (socket) {
@@ -184,14 +364,30 @@ export default function AdminPanel() {
 
   const startCompetition = () => {
     if (!socket) return;
+
+    if (competitionModeSelection === 'knockout') {
+      if (bracketState.bracket) {
+        socket.emit('start-competition', { competitionMode: 'knockout' });
+        return;
+      }
+
+      const bracket = buildBracketFromSeeds(seedOrder);
+      if (bracket) {
+        socket.emit('create-bracket', bracket);
+        setBracketChampion(null);
+      }
+      return;
+    }
+
     socket.emit('start-competition', {
       roundLimit: roundLimit || null,
-      pointLimit: pointLimit || null
+      pointLimit: pointLimit || null,
+      competitionMode: 'series'
     });
   };
 
   const handleNextRound = () => {
-    if (!socket) return;
+    if (!socket || gameState?.competitionMode === 'knockout') return;
     socket.emit('next-round');
   };
 
@@ -200,46 +396,59 @@ export default function AdminPanel() {
     socket.emit('end-competition');
   };
 
-  const parsePlayerNumber = (playerId) => {
-    if (playerId == null) return null;
-    const numericId = Number.parseInt(playerId, 10);
-    return Number.isFinite(numericId) ? numericId : null;
+  const handleAdvanceBracket = useCallback(() => {
+    if (!socket) return;
+    socket.emit('advance-match');
+  }, [socket]);
+
+  const handleReportWinner = useCallback((winnerId) => {
+    if (!socket || !winnerId) return;
+    socket.emit('select-winner', winnerId);
+  }, [socket]);
+
+  const handleResetBracket = useCallback(() => {
+    if (!socket) return;
+    socket.emit('reset-bracket');
+    setBracketChampion(null);
+  }, [socket]);
+
+  const handleRestartBracket = useCallback(() => {
+    if (!socket) return;
+    socket.emit('start-competition', { competitionMode: 'knockout' });
+    setBracketChampion(null);
+  }, [socket]);
+
+  const handleAutoSeed = useCallback(() => {
+    const orderedPlayers = playerEntries.map(([playerId]) => String(playerId));
+    setSeedOrder(orderedPlayers);
+  }, [playerEntries]);
+
+  const handleDragStart = (index) => {
+    setDraggedSeedIndex(index);
   };
 
-  const playerEntries = useMemo(() => {
-    const reservedSlots = Math.max(Number(gameState?.playerSlots) || 0, 2);
-    const rosterIds = new Set(
-      Array.from({ length: reservedSlots }, (_, idx) => String(idx + 1))
-    );
+  const handleDragEnd = () => {
+    setDraggedSeedIndex(null);
+  };
 
-    if (gameState?.players) {
-      Object.keys(gameState.players).forEach((playerId) => rosterIds.add(playerId));
+  const handleDragOver = (event) => {
+    event.preventDefault();
+  };
+
+  const handleDrop = (event, index) => {
+    event.preventDefault();
+    if (draggedSeedIndex === null || draggedSeedIndex === index) {
+      return;
     }
 
-    return Array.from(rosterIds)
-      .sort((a, b) => {
-        const aNum = parsePlayerNumber(a);
-        const bNum = parsePlayerNumber(b);
-
-        if (aNum !== null && bNum !== null) {
-          return aNum - bNum;
-        }
-
-        if (aNum !== null) return -1;
-        if (bNum !== null) return 1;
-        return String(a).localeCompare(String(b));
-      })
-      .map((playerId) => [playerId, gameState?.players?.[playerId] || null]);
-  }, [gameState?.playerSlots, gameState?.players]);
-
-  const highestActiveSlot = useMemo(() => {
-    if (!gameState?.players) return 0;
-    return Object.keys(gameState.players).reduce((max, playerId) => {
-      const numericId = parsePlayerNumber(playerId);
-      if (numericId === null) return max;
-      return Math.max(max, numericId);
-    }, 0);
-  }, [gameState?.players]);
+    setSeedOrder(prev => {
+      const updated = [...prev];
+      const [moved] = updated.splice(draggedSeedIndex, 1);
+      updated.splice(index, 0, moved);
+      return updated;
+    });
+    setDraggedSeedIndex(null);
+  };
 
   const standings = useMemo(() => {
     if (!gameState?.scores) return [];
@@ -251,20 +460,71 @@ export default function AdminPanel() {
       }))
       .sort((a, b) => {
         if (b.score !== a.score) return b.score - a.score;
-        const aNum = parsePlayerNumber(a.playerId);
-        const bNum = parsePlayerNumber(b.playerId);
-        if (aNum !== null && bNum !== null) return aNum - bNum;
-        if (aNum !== null) return -1;
-        if (bNum !== null) return 1;
-        return String(a.playerId).localeCompare(String(b.playerId));
+        return Number(a.playerId) - Number(b.playerId);
       });
   }, [gameState?.scores, gameState?.players]);
 
+  const isKnockoutSelected = competitionModeSelection === 'knockout';
+  const bracketRounds = bracketState.bracket?.rounds || [];
+  const bracketIsLive = bracketRounds.length > 0;
+  const knockoutActive = gameState?.competitionMode === 'knockout' && gameState?.competitionActive;
+  const isKnockoutModeActive = knockoutActive || bracketIsLive;
+  const hasSeeds = seedOrder.filter(Boolean).length >= 2;
+
   const connectedPlayerCount = useMemo(
-    () => Object.values(gameState?.players || {}).filter((player) => player?.connected).length,
-    [gameState?.players]
+    () => playerEntries.filter(([, player]) => player?.connected).length,
+    [playerEntries]
   );
   const expectedPlayers = Math.max(playerEntries.length, 2);
+
+  const totalMatches = useMemo(() => {
+    if (!bracketState.bracket?.rounds) return 0;
+    return bracketState.bracket.rounds.reduce((sum, round) => {
+      return sum + (Array.isArray(round?.matches) ? round.matches.length : 0);
+    }, 0);
+  }, [bracketState.bracket]);
+
+  const completedMatches = useMemo(() => {
+    if (!bracketState.bracket?.rounds) return 0;
+    return bracketState.bracket.rounds.reduce((sum, round) => {
+      if (!Array.isArray(round?.matches)) return sum;
+      return sum + round.matches.filter(match => match?.status === 'completed' || match?.winner).length;
+    }, 0);
+  }, [bracketState.bracket]);
+
+  const currentMatch = useMemo(() => {
+    if (!bracketState.bracket || !bracketState.currentMatch) return null;
+    const { roundIndex, matchIndex } = bracketState.currentMatch;
+    return bracketState.bracket.rounds?.[roundIndex]?.matches?.[matchIndex] || null;
+  }, [bracketState.bracket, bracketState.currentMatch]);
+
+  const currentMatchPlayers = currentMatch?.players || [];
+  const activeMatchPlayers = matchReadyInfo?.match?.players || currentMatchPlayers;
+  const eliminatedSet = useMemo(() => new Set(bracketState.eliminatedPlayers || []), [bracketState.eliminatedPlayers]);
+  const currentMatchDescriptor = useMemo(() => {
+    if (!bracketState.currentMatch || !bracketRounds.length) {
+      return 'Awaiting seeding';
+    }
+    const { roundIndex, matchIndex } = bracketState.currentMatch;
+    const round = bracketRounds[roundIndex];
+    const roundName = round?.name || `Round ${roundIndex + 1}`;
+    return `${roundName} • Match ${matchIndex + 1}`;
+  }, [bracketRounds, bracketState.currentMatch]);
+
+  const canStartSeriesCompetition = connected &&
+    !gameState?.competitionActive &&
+    !bracketIsLive &&
+    connectedPlayerCount >= 2;
+
+  const canCreateBracket = connected &&
+    !gameState?.competitionActive &&
+    !bracketIsLive &&
+    hasSeeds;
+
+  const canRestartKnockout = isKnockoutSelected && bracketIsLive && !gameState?.competitionActive;
+  const canStartCompetition = isKnockoutSelected ? canCreateBracket : canStartSeriesCompetition;
+  const canAdvanceBracketManually = bracketIsLive && (!!bracketState.currentMatch || !!matchReadyInfo);
+  const startButtonLabel = isKnockoutSelected ? 'Create Knockout Bracket' : 'Start Competition';
 
   const roundsPlayed = gameState?.roundsPlayed || 0;
   const roundGoal = gameState?.competitionConfig?.roundLimit || null;
@@ -275,18 +535,27 @@ export default function AdminPanel() {
   const currentRoundNumber = gameState?.competitionActive
     ? (gameState.roundNumber || roundsPlayed + 1)
     : roundsPlayed;
-  const competitionStatus = gameState?.competitionActive
-    ? 'Active'
-    : roundsPlayed > 0
-      ? 'Completed'
-      : 'Not Started';
+  const modeLabel = ((gameState?.competitionMode || (bracketIsLive ? 'knockout' : competitionModeSelection)) === 'knockout')
+    ? 'Knockout'
+    : 'Series';
+  let competitionStatus = 'Not Started';
+  if (gameState?.competitionActive) {
+    competitionStatus = `Active (${modeLabel})`;
+  } else if (roundsPlayed > 0) {
+    competitionStatus = `Completed (${modeLabel})`;
+  } else if (bracketIsLive) {
+    competitionStatus = `Bracket Ready (${modeLabel})`;
+  }
+
   const competitionStatusColor = gameState?.competitionActive
     ? 'text-green-400'
     : roundsPlayed > 0
       ? 'text-blue-300'
-      : 'text-gray-400';
-  const canStartCompetition = connected && !gameState?.competitionActive && connectedPlayerCount >= 2;
-  const canAdvanceRound = !!gameState?.competitionActive;
+      : bracketIsLive
+        ? 'text-purple-300'
+        : 'text-gray-400';
+
+  const canAdvanceRound = !!gameState?.competitionActive && gameState?.competitionMode !== 'knockout';
   const canEndCompetition = !!gameState?.competitionActive;
   const displayCurrentRound = gameState?.competitionActive
     ? Math.max(1, currentRoundNumber || 1)
@@ -297,41 +566,14 @@ export default function AdminPanel() {
     return { color: 'text-green-500', text: 'Connected' };
   };
 
+  const matchParticipants = activeMatchPlayers.filter(Boolean);
+  const currentMatchReadyPlayers = matchParticipants.length;
   const canStartBattle = connected &&
     gameState?.phase === 'ready' &&
     gameState?.target &&
-    connectedPlayerCount >= 2;
-
-  const getPlayerAccent = (playerId) => {
-    const palette = [
-      { title: 'text-green-400', link: 'text-green-300' },
-      { title: 'text-purple-400', link: 'text-purple-300' },
-      { title: 'text-orange-400', link: 'text-orange-300' },
-      { title: 'text-pink-400', link: 'text-pink-300' },
-      { title: 'text-yellow-400', link: 'text-yellow-300' },
-      { title: 'text-cyan-400', link: 'text-cyan-300' }
-    ];
-    const numericId = parsePlayerNumber(playerId);
-    const index = numericId !== null ? Math.max(numericId - 1, 0) : 0;
-    return palette[index % palette.length];
-  };
-
-  const handleAddPlayerSlot = React.useCallback(() => {
-    if (!socket) return;
-    socket.emit('add-player-slot');
-    setSlotWarning('');
-  }, [socket]);
-
-  const handleRemovePlayerSlot = React.useCallback(() => {
-    if (!socket) return;
-    socket.emit('remove-player-slot');
-  }, [socket]);
-
-  const canRemovePlayerSlot = useMemo(() => {
-    const currentSlots = Number(gameState?.playerSlots) || 0;
-    const minSlots = Math.max(2, highestActiveSlot || 0);
-    return currentSlots > minSlots;
-  }, [gameState?.playerSlots, highestActiveSlot]);
+    connectedPlayerCount >= 2 &&
+    (!isKnockoutModeActive || currentMatchReadyPlayers === 2);
+  const canSubmitWinner = currentMatchReadyPlayers === 2;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 text-white">
@@ -500,63 +742,129 @@ export default function AdminPanel() {
           </h2>
 
           <div className="grid lg:grid-cols-2 gap-6">
-            <div>
-              <div className="flex items-center justify-between mb-6">
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-400 uppercase tracking-wide">Status</p>
                   <p className={`text-2xl font-bold ${competitionStatusColor}`}>{competitionStatus}</p>
                 </div>
                 <div className="text-right text-sm text-gray-300">
-                  <div>Rounds Played: <span className="font-semibold text-white">{roundsPlayed}</span></div>
-                  <div>Current Round: <span className="font-semibold text-white">{displayCurrentRound || 0}</span></div>
+                  {isKnockoutModeActive ? (
+                    <>
+                      <div>
+                        Matches Completed:{' '}
+                        <span className="font-semibold text-white">{completedMatches}/{totalMatches}</span>
+                      </div>
+                      <div>
+                        Current Match:{' '}
+                        <span className="font-semibold text-white">{currentMatchDescriptor}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div>
+                        Rounds Played:{' '}
+                        <span className="font-semibold text-white">{roundsPlayed}</span>
+                      </div>
+                      <div>
+                        Current Round:{' '}
+                        <span className="font-semibold text-white">{displayCurrentRound || 0}</span>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
 
-              <div className="grid sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-semibold mb-2 flex items-center">
-                    <Flag className="h-4 w-4 mr-2 text-yellow-400" />
-                    Round Goal
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    placeholder="No limit"
-                    value={roundLimit}
-                    onChange={(e) => setRoundLimit(e.target.value)}
-                    disabled={gameState?.competitionActive}
-                    className={`w-full p-2 rounded border text-white focus:outline-none focus:border-blue-500 ${
-                      gameState?.competitionActive
-                        ? 'bg-gray-700 border-gray-600 cursor-not-allowed text-gray-400'
-                        : 'bg-gray-700 border-gray-600 hover:border-gray-500'
-                    }`}
-                  />
-                  <p className="text-xs text-gray-400 mt-1">Automatically ends after this many rounds.</p>
+              <div>
+                <p className="text-sm text-gray-400 uppercase tracking-wide">Mode Selection</p>
+                <div className="mt-2 inline-flex rounded-lg border border-gray-600 overflow-hidden">
+                  <button
+                    onClick={() => setCompetitionModeSelection('series')}
+                    disabled={gameState?.competitionActive || bracketIsLive}
+                    className={`px-4 py-2 text-sm font-medium transition-colors ${
+                      competitionModeSelection === 'series'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-900 text-gray-300 hover:bg-gray-700'
+                    } ${gameState?.competitionActive || bracketIsLive ? 'cursor-not-allowed opacity-60' : ''}`}
+                  >
+                    Series
+                  </button>
+                  <button
+                    onClick={() => setCompetitionModeSelection('knockout')}
+                    disabled={gameState?.competitionActive || bracketIsLive}
+                    className={`px-4 py-2 text-sm font-medium transition-colors border-l border-gray-600 ${
+                      competitionModeSelection === 'knockout'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-900 text-gray-300 hover:bg-gray-700'
+                    } ${gameState?.competitionActive || bracketIsLive ? 'cursor-not-allowed opacity-60' : ''}`}
+                  >
+                    Knockout
+                  </button>
                 </div>
-
-                <div>
-                  <label className="block text-sm font-semibold mb-2 flex items-center">
-                    <Target className="h-4 w-4 mr-2 text-red-400" />
-                    Point Goal
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    placeholder="No limit"
-                    value={pointLimit}
-                    onChange={(e) => setPointLimit(e.target.value)}
-                    disabled={gameState?.competitionActive}
-                    className={`w-full p-2 rounded border text-white focus:outline-none focus:border-blue-500 ${
-                      gameState?.competitionActive
-                        ? 'bg-gray-700 border-gray-600 cursor-not-allowed text-gray-400'
-                        : 'bg-gray-700 border-gray-600 hover:border-gray-500'
-                    }`}
-                  />
-                  <p className="text-xs text-gray-400 mt-1">First player to reach this total wins the series.</p>
-                </div>
+                <p className="text-xs text-gray-400 mt-2">
+                  {gameState?.competitionActive || bracketIsLive
+                    ? 'Mode selection is locked while a competition or bracket is active.'
+                    : 'Choose the format before starting the competition.'}
+                </p>
               </div>
 
-              <div className="flex flex-wrap gap-3 mt-6">
+              {competitionModeSelection === 'series' ? (
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold mb-2 flex items-center">
+                      <Flag className="h-4 w-4 mr-2 text-yellow-400" />
+                      Round Goal
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      placeholder="No limit"
+                      value={roundLimit}
+                      onChange={(e) => setRoundLimit(e.target.value)}
+                      disabled={gameState?.competitionActive || isKnockoutModeActive}
+                      className={`w-full p-2 rounded border text-white focus:outline-none focus:border-blue-500 ${
+                        gameState?.competitionActive || isKnockoutModeActive
+                          ? 'bg-gray-700 border-gray-600 cursor-not-allowed text-gray-400'
+                          : 'bg-gray-700 border-gray-600 hover:border-gray-500'
+                      }`}
+                    />
+                    <p className="text-xs text-gray-400 mt-1">Automatically ends after this many rounds.</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold mb-2 flex items-center">
+                      <Target className="h-4 w-4 mr-2 text-red-400" />
+                      Point Goal
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      placeholder="No limit"
+                      value={pointLimit}
+                      onChange={(e) => setPointLimit(e.target.value)}
+                      disabled={gameState?.competitionActive || isKnockoutModeActive}
+                      className={`w-full p-2 rounded border text-white focus:outline-none focus:border-blue-500 ${
+                        gameState?.competitionActive || isKnockoutModeActive
+                          ? 'bg-gray-700 border-gray-600 cursor-not-allowed text-gray-400'
+                          : 'bg-gray-700 border-gray-600 hover:border-gray-500'
+                      }`}
+                    />
+                    <p className="text-xs text-gray-400 mt-1">First player to reach this total wins the series.</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 bg-gray-900/40 border border-gray-700 rounded-lg flex items-start space-x-3">
+                  <GitBranch className="h-6 w-6 text-blue-300 mt-1" />
+                  <div>
+                    <p className="text-sm font-semibold text-gray-200">Knockout ladder</p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      Round and point goals are handled automatically. Seed players below to build the bracket, then advance each matchup when ready.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-wrap gap-3">
                 <button
                   onClick={startCompetition}
                   disabled={!canStartCompetition}
@@ -567,7 +875,7 @@ export default function AdminPanel() {
                   }`}
                 >
                   <Trophy className="h-5 w-5 mr-2" />
-                  Start Competition
+                  {startButtonLabel}
                 </button>
 
                 <button
@@ -595,80 +903,376 @@ export default function AdminPanel() {
                   <RotateCcw className="h-5 w-5 mr-2" />
                   End Competition
                 </button>
+
+                {isKnockoutModeActive && (
+                  <>
+                    <button
+                      onClick={handleAdvanceBracket}
+                      disabled={!canAdvanceBracketManually}
+                      className={`flex items-center px-4 py-2 rounded-lg font-semibold transition-colors border ${
+                        canAdvanceBracketManually
+                          ? 'bg-indigo-600 hover:bg-indigo-500 border-indigo-500 text-white'
+                          : 'bg-gray-700 text-gray-400 border-gray-600 cursor-not-allowed'
+                      }`}
+                    >
+                      <Play className="h-5 w-5 mr-2 rotate-90" />
+                      Advance Bracket
+                    </button>
+                    <button
+                      onClick={handleResetBracket}
+                      className="flex items-center px-4 py-2 rounded-lg font-semibold transition-colors border bg-gray-700 hover:bg-gray-600 border-gray-500 text-gray-100"
+                    >
+                      <RotateCcw className="h-5 w-5 mr-2" />
+                      Reset Ladder
+                    </button>
+                  </>
+                )}
+
+                {canRestartKnockout && (
+                  <button
+                    onClick={handleRestartBracket}
+                    className="flex items-center px-4 py-2 rounded-lg font-semibold transition-colors border bg-amber-600 hover:bg-amber-500 border-amber-500 text-white"
+                  >
+                    <RotateCcw className="h-5 w-5 mr-2" />
+                    Restart Ladder
+                  </button>
+                )}
               </div>
 
-              <div className="mt-6 space-y-4">
-                <div>
-                  <div className="flex items-center justify-between text-xs text-gray-300 mb-1">
-                    <span>Round Progress</span>
-                    {roundGoal ? (
-                      <span>{Math.min(roundsPlayed, roundGoal)}/{roundGoal} rounds</span>
-                    ) : (
-                      <span>No round limit</span>
-                    )}
+              {competitionModeSelection === 'series' && !isKnockoutModeActive ? (
+                <div className="mt-4 space-y-4">
+                  <div>
+                    <div className="flex items-center justify-between text-xs text-gray-300 mb-1">
+                      <span>Round Progress</span>
+                      {roundGoal ? (
+                        <span>{Math.min(roundsPlayed, roundGoal)}/{roundGoal} rounds</span>
+                      ) : (
+                        <span>No round limit</span>
+                      )}
+                    </div>
+                    <div className="h-2 bg-gray-700 rounded">
+                      <div
+                        className="h-2 bg-blue-500 rounded"
+                        style={{ width: `${roundGoal ? Math.min(100, Math.round(roundProgress * 100)) : 0}%` }}
+                      ></div>
+                    </div>
                   </div>
-                  <div className="h-2 bg-gray-700 rounded">
-                    <div
-                      className="h-2 bg-blue-500 rounded"
-                      style={{ width: `${roundGoal ? Math.min(100, Math.round(roundProgress * 100)) : 0}%` }}
-                    ></div>
-                  </div>
-                </div>
 
-                <div>
-                  <div className="flex items-center justify-between text-xs text-gray-300 mb-1">
-                    <span>Point Progress</span>
-                    {pointGoal ? (
-                      <span>{leaderScore}/{pointGoal} pts</span>
-                    ) : (
-                      <span>No point limit</span>
-                    )}
-                  </div>
-                  <div className="h-2 bg-gray-700 rounded">
-                    <div
-                      className="h-2 bg-green-500 rounded"
-                      style={{ width: `${pointGoal ? Math.min(100, Math.round(pointProgress * 100)) : 0}%` }}
-                    ></div>
+                  <div>
+                    <div className="flex items-center justify-between text-xs text-gray-300 mb-1">
+                      <span>Point Progress</span>
+                      {pointGoal ? (
+                        <span>{leaderScore}/{pointGoal} pts</span>
+                      ) : (
+                        <span>No point limit</span>
+                      )}
+                    </div>
+                    <div className="h-2 bg-gray-700 rounded">
+                      <div
+                        className="h-2 bg-green-500 rounded"
+                        style={{ width: `${pointGoal ? Math.min(100, Math.round(pointProgress * 100)) : 0}%` }}
+                      ></div>
+                    </div>
                   </div>
                 </div>
-              </div>
+              ) : (
+                <div className="mt-4 p-4 bg-gray-900/40 border border-gray-700 rounded-lg text-sm text-gray-300 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span>Total Matches</span>
+                    <span className="font-semibold text-white">{totalMatches}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>Completed</span>
+                    <span className="font-semibold text-white">{completedMatches}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>Eliminated Players</span>
+                    <span className="font-semibold text-white">{bracketState.eliminatedPlayers?.length || 0}</span>
+                  </div>
+                  {bracketChampion && (
+                    <div className="flex items-center text-yellow-200 space-x-2 pt-2 border-t border-gray-700 mt-2">
+                      <Crown className="h-4 w-4" />
+                      <span>Champion: {getPlayerLabel(bracketChampion)}</span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
-            <div>
+            <div className="space-y-4">
               <h3 className="text-lg font-semibold mb-3 flex items-center text-yellow-300">
                 <Trophy className="h-5 w-5 mr-2" />
                 Live Standings
               </h3>
               {standings.length > 0 ? (
                 <div className="space-y-2">
-                  {standings.map((entry, index) => (
-                    <div
-                      key={entry.playerId}
-                      className={`flex items-center justify-between bg-gray-700 rounded-lg px-4 py-2 border ${
-                        index === 0 ? 'border-yellow-400' : 'border-gray-600'
-                      }`}
-                    >
-                      <div>
-                        <div className="font-semibold">Player {entry.playerId}</div>
-                        <div className="text-xs text-gray-400">
-                          {entry.connected ? 'Connected' : 'Offline'}
+                  {standings.map((entry, index) => {
+                    const eliminated = eliminatedSet.has(entry.playerId);
+                    return (
+                      <div
+                        key={entry.playerId}
+                        className={`flex items-center justify-between bg-gray-700 rounded-lg px-4 py-2 border ${
+                          index === 0 && !eliminated ? 'border-yellow-400' : 'border-gray-600'
+                        }`}
+                      >
+                        <div>
+                          <div className="font-semibold">{getPlayerLabel(entry.playerId)}</div>
+                          <div className={`text-xs ${eliminated ? 'text-red-300' : 'text-gray-400'}`}>
+                            {eliminated ? 'Eliminated' : entry.connected ? 'Connected' : 'Offline'}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-xl font-bold text-white">{entry.score}</div>
+                          {pointGoal && competitionModeSelection === 'series' && (
+                            <div className="text-xs text-gray-300">
+                              {Math.round(pointGoal ? (entry.score / pointGoal) * 100 : 0)}%
+                            </div>
+                          )}
                         </div>
                       </div>
-                      <div className="text-right">
-                        <div className="text-xl font-bold text-white">{entry.score}</div>
-                        {pointGoal && (
-                          <div className="text-xs text-gray-300">
-                            {Math.round(pointGoal ? (entry.score / pointGoal) * 100 : 0)}%
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
-                <p className="text-sm text-gray-400">Standings will appear once the competition begins.</p>
+                <p className="text-sm text-gray-400">
+                  Standings will appear once the competition begins.
+                </p>
               )}
             </div>
+
+            {isKnockoutSelected && !bracketIsLive && (
+              <div className="lg:col-span-2 border border-dashed border-gray-600 rounded-lg p-5 bg-gray-900/20">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold flex items-center text-blue-300">
+                    <Shuffle className="h-5 w-5 mr-2" />
+                    Seed Players
+                  </h3>
+                  <button
+                    onClick={handleAutoSeed}
+                    disabled={playerEntries.length === 0}
+                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                      playerEntries.length === 0
+                        ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                        : 'bg-blue-600 hover:bg-blue-500 text-white'
+                    }`}
+                  >
+                    Auto Seed
+                  </button>
+                </div>
+                <p className="text-sm text-gray-400 mb-4">
+                  Drag players to set the bracket order. Seeds are paired from top to bottom.
+                </p>
+                {seedOrder.length > 0 ? (
+                  <div className="grid md:grid-cols-2 gap-3">
+                    {seedOrder.map((playerId, index) => {
+                      const player = gameState?.players?.[playerId];
+                      const isDragging = draggedSeedIndex === index;
+                      return (
+                        <div
+                          key={playerId || `seed-${index}`}
+                          draggable={seedOrder.length > 1}
+                          onDragStart={() => handleDragStart(index)}
+                          onDragOver={handleDragOver}
+                          onDrop={(event) => handleDrop(event, index)}
+                          onDragEnd={handleDragEnd}
+                          className={`flex items-center justify-between p-3 rounded-lg border transition-colors ${
+                            isDragging ? 'border-blue-400 bg-blue-900/30' : 'border-gray-600 bg-gray-900/40'
+                          }`}
+                        >
+                          <div>
+                            <div className="text-sm font-semibold text-white">
+                              Seed {index + 1}: {getPlayerLabel(playerId)}
+                            </div>
+                            <div className="text-xs text-gray-400">
+                              {player?.connected ? 'Connected' : 'Offline'}
+                            </div>
+                          </div>
+                          <MoveVertical className="h-4 w-4 text-gray-400" />
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-sm text-gray-400 bg-gray-900/30 border border-gray-700 rounded-lg p-4">
+                    Add players to the lobby or use Auto Seed to populate the bracket.
+                  </div>
+                )}
+                {!hasSeeds && (
+                  <p className="text-xs text-red-300 mt-4">
+                    At least two players are required to create a knockout bracket.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {isKnockoutModeActive && (
+              <div className="lg:col-span-2 space-y-6 mt-2">
+                <div className="bg-gray-900/40 border border-gray-700 rounded-lg p-5">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-semibold text-yellow-200 flex items-center">
+                      <Play className="h-5 w-5 mr-2" />
+                      Current Match
+                    </h3>
+                    <span className="text-xs text-gray-400">{currentMatchDescriptor}</span>
+                  </div>
+
+                  <div className="mt-4 grid md:grid-cols-2 gap-3">
+                    {matchParticipants.length > 0 ? (
+                      matchParticipants.map((playerId, idx) => {
+                        const player = gameState?.players?.[playerId];
+                        const isWinner = currentMatch?.winner === playerId;
+                        return (
+                          <div
+                            key={`${playerId}-${idx}`}
+                            className={`p-3 rounded-lg border ${
+                              isWinner
+                                ? 'border-green-400 bg-green-900/20'
+                                : 'border-gray-600 bg-gray-900/40'
+                            }`}
+                          >
+                            <div className="text-sm font-semibold text-white">
+                              {getPlayerLabel(playerId)}
+                            </div>
+                            <div className="text-xs text-gray-400">
+                              {player?.connected ? 'Connected' : 'Offline'}
+                            </div>
+                            {isWinner && (
+                              <div className="text-xs text-green-300 mt-1">Reported winner</div>
+                            )}
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <p className="text-sm text-gray-400 md:col-span-2">
+                        Waiting for a playable matchup. Seed players or advance the bracket to continue.
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap gap-3 mt-4">
+                    <button
+                      onClick={startBattle}
+                      disabled={!canStartBattle}
+                      className={`flex items-center px-4 py-2 rounded-lg font-semibold transition-colors border ${
+                        canStartBattle
+                          ? 'bg-green-600 hover:bg-green-500 border-green-500 text-white'
+                          : 'bg-gray-700 text-gray-400 border-gray-600 cursor-not-allowed'
+                      }`}
+                    >
+                      <Play className="h-5 w-5 mr-2" />
+                      Start Match
+                    </button>
+
+                    {matchParticipants.map((playerId) => (
+                      <button
+                        key={`report-${playerId}`}
+                        onClick={() => handleReportWinner(playerId)}
+                        disabled={!canSubmitWinner}
+                        className={`flex items-center px-4 py-2 rounded-lg font-semibold transition-colors border ${
+                          canSubmitWinner
+                            ? 'bg-emerald-600 hover:bg-emerald-500 border-emerald-500 text-white'
+                            : 'bg-gray-700 text-gray-400 border-gray-600 cursor-not-allowed'
+                        }`}
+                      >
+                        <Trophy className="h-5 w-5 mr-2" />
+                        Report {getPlayerLabel(playerId)}
+                      </button>
+                    ))}
+
+                    <button
+                      onClick={handleAdvanceBracket}
+                      disabled={!canAdvanceBracketManually}
+                      className={`flex items-center px-4 py-2 rounded-lg font-semibold transition-colors border ${
+                        canAdvanceBracketManually
+                          ? 'bg-indigo-600 hover:bg-indigo-500 border-indigo-500 text-white'
+                          : 'bg-gray-700 text-gray-400 border-gray-600 cursor-not-allowed'
+                      }`}
+                    >
+                      <RotateCcw className="h-5 w-5 mr-2" />
+                      Advance Without Winner
+                    </button>
+                  </div>
+
+                  {isKnockoutModeActive && !canStartBattle && currentMatchReadyPlayers !== 2 && (
+                    <p className="text-xs text-yellow-300 mt-3">
+                      Assign two players to the current match and set a battle target to enable the start button.
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <h3 className="text-lg font-semibold mb-3 flex items-center text-blue-300">
+                    <GitBranch className="h-5 w-5 mr-2" />
+                    Knockout Ladder
+                  </h3>
+                  <div className="overflow-x-auto pb-2">
+                    <div className="flex gap-6 min-w-full">
+                      {bracketRounds.map((round, roundIndex) => (
+                        <div key={roundIndex} className="min-w-[220px] space-y-3">
+                          <div className="text-sm font-semibold text-gray-200 border-b border-gray-600 pb-1">
+                            {round?.name || `Round ${roundIndex + 1}`}
+                          </div>
+                          {(round?.matches || []).map((match, matchIndex) => {
+                            const matchKey = match?.id || `${roundIndex}-${matchIndex}`;
+                            const isCurrent = bracketState.currentMatch?.roundIndex === roundIndex &&
+                              bracketState.currentMatch?.matchIndex === matchIndex;
+                            const matchParticipantsList = (match?.players || []).filter(Boolean);
+                            const matchStatus = match?.status || (matchParticipantsList.length < 2 ? 'awaiting' : 'pending');
+                            return (
+                              <div
+                                key={matchKey}
+                                className={`p-3 rounded-lg border text-sm space-y-2 ${
+                                  isCurrent
+                                    ? 'border-blue-400 bg-blue-900/30'
+                                    : match?.status === 'completed'
+                                      ? 'border-green-400 bg-green-900/20'
+                                      : match?.status === 'in-progress'
+                                        ? 'border-purple-400 bg-purple-900/20'
+                                        : 'border-gray-600 bg-gray-900/40'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between text-xs text-gray-400 uppercase">
+                                  <span>Match {matchIndex + 1}</span>
+                                  <span className="capitalize">{matchStatus.replace('-', ' ')}</span>
+                                </div>
+                                <div className="space-y-2">
+                                  {(match?.players || []).map((playerId, idx) => {
+                                    if (!playerId) {
+                                      return (
+                                        <div key={`${matchKey}-slot-${idx}`} className="text-xs text-gray-500 italic">
+                                          TBD
+                                        </div>
+                                      );
+                                    }
+                                    const player = gameState?.players?.[playerId];
+                                    const eliminated = eliminatedSet.has(playerId);
+                                    const isWinner = match?.winner === playerId;
+                                    return (
+                                      <div key={`${matchKey}-${playerId}`} className="flex items-center justify-between text-sm text-white">
+                                        <span>{getPlayerLabel(playerId)}</span>
+                                        <span className="text-xs text-gray-400">
+                                          {isWinner
+                                            ? 'Winner'
+                                            : eliminated && match?.status === 'completed'
+                                              ? 'Eliminated'
+                                              : player?.connected
+                                                ? 'Connected'
+                                                : 'Offline'}
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

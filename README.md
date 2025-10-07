@@ -139,6 +139,32 @@ prompt_battle/
 - **Audience participation**: Large display for crowd viewing
 - **Admin controls**: Start, stop, reset, winner selection
 
+## 🔌 Socket Events
+
+The server communicates game progress to clients through Socket.IO events. Key contracts are outlined below:
+
+### `game-state`
+
+Broadcast whenever core game data changes. In addition to existing fields, the payload now includes:
+
+- `competitionMode`: `'series'` (default) or `'knockout'` for bracket play.
+- `bracket`: The current ladder structure `{ rounds: [ { name, matches: [{ id, players, winner, status }] } ] }` or `null` when not in use. Match `status` values are `pending`, `in-progress`, or `completed`.
+- `currentMatch`: `{ roundIndex, matchIndex }` for the active ladder pairing, or `null` when awaiting seeding.
+- `eliminatedPlayers`: Array of player IDs knocked out of a knockout bracket.
+
+### Admin controls
+
+- `start-competition` – unchanged, but accepts an optional `competitionMode` property (`'series'` or `'knockout'`).
+- `create-bracket` – seeds a knockout ladder. Expects `{ rounds: [{ name?, matches: [{ id?, players: [playerA, playerB] }] }] }`.
+- `advance-match` – manually steps a bracket forward. Pass `{ winnerId }` to record a victor or call with no payload to jump to the next playable match.
+- `reset-bracket` – clears the bracket and returns the server to standard series play.
+
+### Bracket notifications
+
+- `bracket-updated` – emitted with `{ bracket, currentMatch, eliminatedPlayers }` whenever the ladder changes.
+- `match-ready` – announces the next ready pairing with `{ roundIndex, matchIndex, match }` (includes players and status).
+- `bracket-finished` – fired when a champion is crowned with `{ bracket, champion }`.
+
 ## 🔧 Customization
 
 ### Adding New Target Types
