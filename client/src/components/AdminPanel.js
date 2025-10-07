@@ -499,18 +499,6 @@ export default function AdminPanel() {
   const canRemovePlayerSlot = totalPlayerSlots > minimumSlots;
   const expectedPlayers = totalPlayerSlots;
 
-  const quickAccessSlots = useMemo(() => {
-    return Array.from({ length: totalPlayerSlots }, (_, index) => {
-      const slotNumber = index + 1;
-      const slotKey = String(slotNumber);
-      return {
-        slotNumber,
-        slotKey,
-        player: gameState?.players?.[slotKey] || null
-      };
-    });
-  }, [totalPlayerSlots, gameState?.players]);
-
   const handleAddPlayerSlot = useCallback(() => {
     if (!socket) return;
     setSlotWarning('');
