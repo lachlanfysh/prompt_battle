@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import io from 'socket.io-client';
 import { getSocketURL, getProxiedImageUrl } from '../utils/network';
 
@@ -10,6 +10,34 @@ export default function PlayerInterface({ playerId }) {
   const [error, setError] = useState(null);
   const [timer, setTimer] = useState(0);
   const previousPhaseRef = useRef();
+  const playerKey = String(playerId);
+
+  const standings = useMemo(() => {
+    if (!gameState?.scores) return [];
+    return Object.entries(gameState.scores)
+      .map(([id, score]) => ({
+        playerId: id,
+        score,
+        connected: !!gameState.players?.[id]?.connected
+      }))
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return Number(a.playerId) - Number(b.playerId);
+      });
+  }, [gameState?.scores, gameState?.players]);
+
+  const playerScore = gameState?.scores?.[playerKey] || 0;
+  const playerRank = standings.findIndex(entry => entry.playerId === playerKey) + 1;
+  const roundGoal = gameState?.competitionConfig?.roundLimit || null;
+  const pointGoal = gameState?.competitionConfig?.pointLimit || null;
+  const roundsPlayed = gameState?.roundsPlayed || 0;
+  const currentRoundNumber = gameState?.competitionActive
+    ? (gameState.roundNumber || roundsPlayed + 1)
+    : roundsPlayed;
+  const leaderScore = standings[0]?.score || 0;
+  const roundProgress = roundGoal ? Math.min(roundsPlayed / roundGoal, 1) : 0;
+  const pointProgress = pointGoal ? Math.min(leaderScore / pointGoal, 1) : 0;
+  const showCompetitionStats = standings.length > 0 || gameState?.competitionActive || !!roundGoal || !!pointGoal;
 
   useEffect(() => {
     const socketURL = getSocketURL();
@@ -218,6 +246,99 @@ export default function PlayerInterface({ playerId }) {
                 </div>
               )}
             </div>
+
+            {showCompetitionStats && (
+              <div className="border border-black p-3 mb-6 bg-white" style={{
+                boxShadow: 'inset 2px 2px 0px #999'
+              }}>
+                <h3 className="font-bold mb-3" style={{ fontSize: '12px' }}>Competition Tracker</h3>
+                <div className="grid md:grid-cols-2 gap-3" style={{ fontSize: '10px', textAlign: 'left' }}>
+                  <div>
+                    <div className="flex justify-between mb-1">
+                      <span>Your Wins</span>
+                      <span className="font-bold">{playerScore}</span>
+                    </div>
+                    <div className="flex justify-between mb-1">
+                      <span>Your Rank</span>
+                      <span className="font-bold">{playerRank > 0 ? `#${playerRank}` : '—'}</span>
+                    </div>
+                    {pointGoal && (
+                      <div className="flex justify-between mb-1">
+                        <span>Point Goal</span>
+                        <span className="font-bold">{pointGoal}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <div className="flex justify-between mb-1">
+                      <span>Rounds Played</span>
+                      <span className="font-bold">{roundsPlayed}</span>
+                    </div>
+                    <div className="flex justify-between mb-1">
+                      <span>Current Round</span>
+                      <span className="font-bold">
+                        {gameState?.competitionActive ? Math.max(1, currentRoundNumber || 1) : roundsPlayed}
+                      </span>
+                    </div>
+                    {roundGoal && (
+                      <div className="flex justify-between mb-1">
+                        <span>Round Goal</span>
+                        <span className="font-bold">{roundGoal}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {roundGoal && (
+                  <div className="mt-3">
+                    <div className="flex justify-between" style={{ fontSize: '9px' }}>
+                      <span>Round Progress</span>
+                      <span>{Math.min(roundsPlayed, roundGoal)}/{roundGoal}</span>
+                    </div>
+                    <div className="h-2 border border-black bg-gray-200">
+                      <div
+                        className="h-full bg-blue-500"
+                        style={{ width: `${Math.min(100, Math.round(roundProgress * 100))}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                )}
+
+                {pointGoal && (
+                  <div className="mt-3">
+                    <div className="flex justify-between" style={{ fontSize: '9px' }}>
+                      <span>Point Progress</span>
+                      <span>{leaderScore}/{pointGoal} pts</span>
+                    </div>
+                    <div className="h-2 border border-black bg-gray-200">
+                      <div
+                        className="h-full bg-green-500"
+                        style={{ width: `${Math.min(100, Math.round(pointProgress * 100))}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                )}
+
+                {standings.length > 0 && (
+                  <div className="mt-3 border border-black bg-gray-100" style={{
+                    boxShadow: 'inset 1px 1px 0px #999'
+                  }}>
+                    {standings.map(entry => (
+                      <div
+                        key={entry.playerId}
+                        className={`flex items-center justify-between px-2 py-1 border-b border-gray-300 last:border-b-0 ${
+                          entry.playerId === playerKey ? 'bg-yellow-200 font-bold' : ''
+                        }`}
+                        style={{ fontSize: '10px' }}
+                      >
+                        <span>Player {entry.playerId}</span>
+                        <span>{entry.score}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Prompt Input */}
             {(gameState?.phase === 'battling' || gameState?.phase === 'ready') && (
