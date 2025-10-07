@@ -398,6 +398,47 @@ const FlockingBirds = ({ playerBoxes }) => {
   );
 };
 
+const DEFAULT_ROUND_LABELS = [
+  { players: 2, label: 'Final' },
+  { players: 4, label: 'Semifinals' },
+  { players: 8, label: 'Quarterfinals' },
+  { players: 16, label: 'Round of 16' },
+  { players: 32, label: 'Round of 32' },
+  { players: 64, label: 'Round of 64' }
+];
+
+const toPlayerId = (value) => {
+  if (value === undefined || value === null) return null;
+  return String(value);
+};
+
+const getRoundLabel = (round, roundIndex, totalRounds) => {
+  if (round?.name) {
+    return round.name;
+  }
+
+  const matchCount = Array.isArray(round?.matches) ? round.matches.length : 0;
+  const playerCount = matchCount * 2;
+  const mappedLabel = DEFAULT_ROUND_LABELS.find(entry => entry.players === playerCount);
+  if (mappedLabel) {
+    return mappedLabel.label;
+  }
+
+  if (totalRounds - roundIndex === 1) {
+    return 'Final';
+  }
+  if (totalRounds - roundIndex === 2) {
+    return 'Semifinals';
+  }
+
+  return `Round ${roundIndex + 1}`;
+};
+
+const getPlayerAvatarUrl = (player) => {
+  if (!player) return null;
+  return player.avatar || player.avatarUrl || player.imageUrl || player.image || null;
+};
+
 export default function CentralDisplay() {
   const [socket, setSocket] = useState(null);
   const [gameState, setGameState] = useState(null);
@@ -407,6 +448,11 @@ export default function CentralDisplay() {
   const [qrCodes, setQrCodes] = useState({});
   const [gptScoring, setGptScoring] = useState(null);
   const [scoringLoading, setScoringLoading] = useState(false);
+  const [bracket, setBracket] = useState(null);
+  const [currentMatchLocator, setCurrentMatchLocator] = useState(null);
+  const [matchReadyInfo, setMatchReadyInfo] = useState(null);
+  const [eliminatedPlayers, setEliminatedPlayers] = useState([]);
+  const [bracketChampion, setBracketChampion] = useState(null);
   const waitingContainerRef = useRef(null);
   const [playerBoxes, setPlayerBoxes] = useState([]);
   const previousPhaseRef = useRef();
@@ -416,21 +462,14 @@ export default function CentralDisplay() {
     qrCodesRef.current = qrCodes;
   }, [qrCodes]);
 
-  const parsePlayerNumber = (playerId) => {
-    if (playerId == null) return null;
-    const numericId = Number.parseInt(playerId, 10);
-    return Number.isFinite(numericId) ? numericId : null;
-  };
-
   const playerSlotCount = useMemo(() => {
-    const reserved = Number.parseInt(gameState?.playerSlots, 10);
-    const safeReserved = Number.isFinite(reserved) ? reserved : 0;
+    const reserved = Number(gameState?.playerSlots) || 0;
     const highestConnected = Object.keys(gameState?.players || {}).reduce((max, id) => {
-      const numericId = parsePlayerNumber(id);
-      if (numericId === null) return max;
+      const numericId = Number(id);
+      if (!Number.isFinite(numericId)) return max;
       return Math.max(max, numericId);
     }, 0);
-    return Math.max(safeReserved, highestConnected, 2);
+    return Math.max(reserved, highestConnected, 2);
   }, [gameState?.playerSlots, gameState?.players]);
 
   const slotIds = useMemo(
@@ -504,68 +543,156 @@ export default function CentralDisplay() {
     const newSocket = io(socketURL, {
       transports: ['websocket', 'polling']
     });
-    
-    newSocket.on('connect', () => {
+
+    const handleConnect = () => {
       console.log('Central Display connected');
       newSocket.emit('join-display');
-    });
+    };
 
-    newSocket.on('game-state', (state) => {
+    const handleGameState = (state) => {
       console.log('Game state updated:', state);
       setGameState(state);
       if (state.generatedImages) {
         setImages(state.generatedImages);
       }
-    });
 
-    newSocket.on('prompt-update', ({ playerId, prompt }) => {
+      if ('bracket' in state) {
+        setBracket(state.bracket || null);
+      }
+      if ('currentMatch' in state) {
+        setCurrentMatchLocator(state.currentMatch || null);
+      }
+      if ('eliminatedPlayers' in state) {
+        setEliminatedPlayers(Array.isArray(state.eliminatedPlayers) ? state.eliminatedPlayers : []);
+      }
+
+      if (state?.competitionMode === 'knockout') {
+        if (state.competitionActive) {
+          setBracketChampion(null);
+        } else if (state.winner) {
+          setBracketChampion(state.winner);
+        }
+      } else {
+        setBracket(null);
+        setCurrentMatchLocator(null);
+        setMatchReadyInfo(null);
+        setEliminatedPlayers([]);
+        setBracketChampion(null);
+      }
+    };
+
+    const handlePromptUpdate = ({ playerId, prompt }) => {
       setPrompts(prev => ({ ...prev, [playerId]: prompt }));
-    });
+    };
 
-    newSocket.on('battle-started', ({ duration }) => {
+    const handleBattleStarted = ({ duration }) => {
       setTimer(duration);
       setPrompts({});
       setImages({});
       setGptScoring(null);
       setScoringLoading(false);
-    });
+      setMatchReadyInfo(null);
+    };
 
-    newSocket.on('timer-update', (timeLeft) => {
+    const handleTimerUpdate = (timeLeft) => {
       setTimer(timeLeft);
-    });
+    };
 
-    newSocket.on('images-ready', (generatedImages) => {
+    const handleImagesReady = (generatedImages) => {
       setImages(generatedImages);
-    });
+    };
 
-    newSocket.on('winner-selected', (winnerId) => {
+    const handleWinnerSelected = (winnerId) => {
       console.log('Winner selected:', winnerId);
-    });
+    };
 
-    newSocket.on('game-reset', () => {
+    const handleGameReset = () => {
       console.log('Game reset received, clearing display state');
       setPrompts({});
       setImages({});
       setTimer(0);
+      setHasGeneratedNextPlayer(false);
       setGptScoring(null);
       setScoringLoading(false);
-    });
+      setBracket(null);
+      setCurrentMatchLocator(null);
+      setMatchReadyInfo(null);
+      setEliminatedPlayers([]);
+      setBracketChampion(null);
+    };
 
-    newSocket.on('gpt-scoring-result', (result) => {
+    const handleGptScoringResult = (result) => {
       console.log('GPT scoring result received:', result);
       setGptScoring(result);
       setScoringLoading(false);
-    });
+    };
 
-    newSocket.on('gpt-scoring-error', (error) => {
+    const handleGptScoringError = (error) => {
       console.error('GPT scoring error:', error);
       setScoringLoading(false);
       alert(`GPT Scoring Error: ${error}`);
-    });
+    };
+
+    const handleBracketUpdated = ({ bracket, currentMatch, eliminatedPlayers }) => {
+      setBracket(bracket || null);
+      setCurrentMatchLocator(currentMatch || null);
+      setEliminatedPlayers(Array.isArray(eliminatedPlayers) ? eliminatedPlayers : []);
+      if (currentMatch) {
+        setBracketChampion(null);
+      }
+      if (!currentMatch) {
+        setMatchReadyInfo(null);
+      }
+    };
+
+    const handleMatchReady = (payload = null) => {
+      setMatchReadyInfo(payload);
+      if (payload?.roundIndex !== undefined && payload?.matchIndex !== undefined) {
+        setCurrentMatchLocator({ roundIndex: payload.roundIndex, matchIndex: payload.matchIndex });
+      }
+    };
+
+    const handleBracketFinished = ({ bracket, champion }) => {
+      if (bracket) {
+        setBracket(bracket);
+      }
+      if (champion) {
+        setBracketChampion(champion);
+      }
+      setCurrentMatchLocator(null);
+      setMatchReadyInfo(null);
+    };
+
+    newSocket.on('connect', handleConnect);
+    newSocket.on('game-state', handleGameState);
+    newSocket.on('prompt-update', handlePromptUpdate);
+    newSocket.on('battle-started', handleBattleStarted);
+    newSocket.on('timer-update', handleTimerUpdate);
+    newSocket.on('images-ready', handleImagesReady);
+    newSocket.on('winner-selected', handleWinnerSelected);
+    newSocket.on('game-reset', handleGameReset);
+    newSocket.on('gpt-scoring-result', handleGptScoringResult);
+    newSocket.on('gpt-scoring-error', handleGptScoringError);
+    newSocket.on('bracket-updated', handleBracketUpdated);
+    newSocket.on('match-ready', handleMatchReady);
+    newSocket.on('bracket-finished', handleBracketFinished);
 
     setSocket(newSocket);
 
     return () => {
+      newSocket.off('connect', handleConnect);
+      newSocket.off('game-state', handleGameState);
+      newSocket.off('prompt-update', handlePromptUpdate);
+      newSocket.off('battle-started', handleBattleStarted);
+      newSocket.off('timer-update', handleTimerUpdate);
+      newSocket.off('images-ready', handleImagesReady);
+      newSocket.off('winner-selected', handleWinnerSelected);
+      newSocket.off('game-reset', handleGameReset);
+      newSocket.off('gpt-scoring-result', handleGptScoringResult);
+      newSocket.off('gpt-scoring-error', handleGptScoringError);
+      newSocket.off('bracket-updated', handleBracketUpdated);
+      newSocket.off('match-ready', handleMatchReady);
+      newSocket.off('bracket-finished', handleBracketFinished);
       newSocket.close();
     };
   }, []);
@@ -616,30 +743,69 @@ export default function CentralDisplay() {
       }))
       .sort((a, b) => {
         if (b.score !== a.score) return b.score - a.score;
-        const aNum = parsePlayerNumber(a.playerId);
-        const bNum = parsePlayerNumber(b.playerId);
-        if (aNum !== null && bNum !== null) return aNum - bNum;
-        if (aNum !== null) return -1;
-        if (bNum !== null) return 1;
-        return String(a.playerId).localeCompare(String(b.playerId));
+        return Number(a.playerId) - Number(b.playerId);
       });
   }, [gameState?.scores, gameState?.players]);
 
-  const nextChallengerId = useMemo(() => {
-    for (const id of slotIds) {
-      const player = gameState?.players?.[String(id)];
-      if (!player || !player.connected) {
-        return id;
-      }
+  const playersById = gameState?.players || {};
+  const isKnockoutMode = gameState?.competitionMode === 'knockout'
+    || (Array.isArray(bracket?.rounds) && bracket.rounds.length > 0);
+  const bracketRounds = useMemo(
+    () => (Array.isArray(bracket?.rounds) ? bracket.rounds : []),
+    [bracket]
+  );
+  const eliminatedSet = useMemo(() => {
+    const entries = Array.isArray(eliminatedPlayers) ? eliminatedPlayers : [];
+    return new Set(entries.map(id => toPlayerId(id)).filter(Boolean));
+  }, [eliminatedPlayers]);
+  const activeMatch = useMemo(() => {
+    if (matchReadyInfo?.match?.players) {
+      return { ...matchReadyInfo.match };
     }
-    return null;
-  }, [slotIds, gameState?.players]);
-
-  const waitingGridClass = useMemo(() => (
-    playerSlotCount >= 5
-      ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 max-w-5xl mx-auto relative z-10'
-      : 'grid grid-cols-1 sm:grid-cols-2 gap-8 max-w-3xl mx-auto relative z-10'
-  ), [playerSlotCount]);
+    if (!bracket || !currentMatchLocator) return null;
+    return bracket.rounds?.[currentMatchLocator.roundIndex]?.matches?.[currentMatchLocator.matchIndex] || null;
+  }, [bracket, currentMatchLocator, matchReadyInfo]);
+  const defaultSeriesPlayers = useMemo(
+    () => Object.keys(playersById).sort((a, b) => Number(a) - Number(b)),
+    [playersById]
+  );
+  const promptPlayers = useMemo(() => {
+    if (isKnockoutMode) {
+      const rawPlayers = Array.isArray(activeMatch?.players) ? activeMatch.players.slice(0, 2) : [];
+      const normalized = rawPlayers.map(toPlayerId);
+      while (normalized.length < 2) {
+        normalized.push(null);
+      }
+      return normalized;
+    }
+    if (defaultSeriesPlayers.length >= 2) {
+      return defaultSeriesPlayers.slice(0, 2);
+    }
+    return ['1', '2'];
+  }, [isKnockoutMode, activeMatch, defaultSeriesPlayers]);
+  const promptHighlightSet = useMemo(
+    () => new Set(promptPlayers.filter(Boolean)),
+    [promptPlayers]
+  );
+  const activeMatchDescriptor = useMemo(() => {
+    if (!isKnockoutMode) return null;
+    if (!bracketRounds.length) return null;
+    if (!currentMatchLocator) {
+      return 'Awaiting next matchup';
+    }
+    const { roundIndex, matchIndex } = currentMatchLocator;
+    const round = bracketRounds[roundIndex];
+    const roundLabel = getRoundLabel(round, roundIndex, bracketRounds.length);
+    return `${roundLabel} • Match ${matchIndex + 1}`;
+  }, [isKnockoutMode, bracketRounds, currentMatchLocator]);
+  const championId = isKnockoutMode
+    ? toPlayerId(bracketChampion ?? (!gameState?.competitionActive ? gameState?.winner : null))
+    : null;
+  const championPlayer = championId ? playersById[championId] : null;
+  const championAvatar = championPlayer ? getPlayerAvatarUrl(championPlayer) : null;
+  const championAvatarSrc = championAvatar ? getProxiedImageUrl(championAvatar) : null;
+  const timerHighlight = isKnockoutMode && !!(Array.isArray(activeMatch?.players)
+    && activeMatch.players.filter(Boolean).length === 2);
 
   const roundGoal = gameState?.competitionConfig?.roundLimit || null;
   const pointGoal = gameState?.competitionConfig?.pointLimit || null;
@@ -650,7 +816,14 @@ export default function CentralDisplay() {
   const activeRoundNumber = gameState?.competitionActive
     ? (gameState.roundNumber || roundsPlayed + 1)
     : roundsPlayed;
-  const showCompetitionSummary = (standings.length > 0) || gameState?.competitionActive || !!roundGoal || !!pointGoal;
+  const showCompetitionSummary = !isKnockoutMode
+    && ((standings.length > 0) || gameState?.competitionActive || !!roundGoal || !!pointGoal);
+
+  const resolvePlayerName = (playerId) => {
+    if (!playerId) return 'TBD';
+    const player = playersById[playerId];
+    return player?.displayName || `Player ${playerId}`;
+  };
 
   const getPhaseTitle = () => {
     switch (gameState?.phase) {
@@ -665,7 +838,10 @@ export default function CentralDisplay() {
       case 'judging':
         return 'Choose the Winner!';
       case 'finished':
-        return `Player ${gameState?.winner} Wins!`;
+        if (isKnockoutMode && championId) {
+          return `${resolvePlayerName(championId)} is Champion!`;
+        }
+        return gameState?.winner ? `${resolvePlayerName(gameState.winner)} Wins!` : 'Prompt Battle';
       default:
         return 'Prompt Battle';
     }
@@ -715,14 +891,25 @@ export default function CentralDisplay() {
               <div className="w-2 h-2 border border-black bg-white mr-1"></div>
               <span className="text-xs font-bold">Prompt Battle - Central Display</span>
             </div>
-            <div className="flex items-center gap-3 relative z-10 bg-white px-1">
+            <div className="flex items-center gap-2 relative z-10 bg-white px-1">
+              {isKnockoutMode && activeMatchDescriptor && (
+                <div
+                  className="text-[10px] font-bold uppercase tracking-wide border border-black px-2 py-0.5 bg-yellow-200"
+                  style={{ boxShadow: '2px 2px 0px #999' }}
+                >
+                  {activeMatchDescriptor}
+                </div>
+              )}
               {gameState?.phase === 'battling' && (
-                <div className="flex items-center gap-1">
+                <div
+                  className={`flex items-center gap-1 ${timerHighlight ? 'border border-blue-600 bg-blue-100 px-1 py-0.5 rounded-sm' : ''}`}
+                  style={timerHighlight ? { boxShadow: '2px 2px 0px #2563eb' } : undefined}
+                >
                   <div className="w-2 h-2 border border-black bg-white relative">
                     <div className="absolute top-0 left-0.5 w-0.5 h-1 bg-black"></div>
                     <div className="absolute top-0.5 left-0 w-1 h-0.5 bg-black"></div>
                   </div>
-                  <span className={`text-xs font-bold font-mono ${timer <= 10 ? 'animate-pulse' : ''}`}>
+                  <span className={`text-xs font-bold font-mono ${timer <= 10 ? 'animate-pulse text-red-600' : timerHighlight ? 'text-blue-700' : 'text-black'}`}>
                     {formatTime(timer)}
                   </span>
                 </div>
@@ -760,6 +947,149 @@ export default function CentralDisplay() {
                 </div>
               )}
             </div>
+
+            {isKnockoutMode && championId && (
+              <div
+                className="border-4 border-black bg-yellow-200 p-6 mb-6 text-center"
+                style={{ boxShadow: '6px 6px 0px black' }}
+              >
+                <div className="flex flex-col items-center space-y-3">
+                  <div className="text-3xl font-extrabold tracking-widest">🏆 Champion Crowned 🏆</div>
+                  {championAvatarSrc && (
+                    <img
+                      src={championAvatarSrc}
+                      alt={`${resolvePlayerName(championId)} avatar`}
+                      className="w-24 h-24 object-cover border-2 border-black bg-white"
+                    />
+                  )}
+                  <div className="text-2xl font-bold">{resolvePlayerName(championId)}</div>
+                  <div className="text-sm font-medium uppercase tracking-wide">Knockout Bracket Winner</div>
+                </div>
+              </div>
+            )}
+
+            {isKnockoutMode && bracketRounds.length > 0 && (
+              <div
+                className="border-2 border-black bg-white p-4 mb-6 overflow-x-auto"
+                style={{ boxShadow: '3px 3px 0px black' }}
+              >
+                <div className="flex items-start gap-4" style={{ minWidth: `${Math.max(1, bracketRounds.length) * 220}px` }}>
+                  {bracketRounds.map((round, roundIndex) => {
+                    const roundLabel = getRoundLabel(round, roundIndex, bracketRounds.length);
+                    return (
+                      <div key={`round-${roundIndex}`} className="min-w-[200px]">
+                        <div
+                          className="border border-black bg-gray-200 text-center font-bold uppercase text-xs py-1"
+                          style={{ boxShadow: '2px 2px 0px #777' }}
+                        >
+                          {roundLabel}
+                        </div>
+                        <div className="flex flex-col gap-3 mt-3">
+                          {(round.matches || []).map((match, matchIndex) => {
+                            const playersForMatch = Array.isArray(match?.players) ? match.players.slice(0, 2) : [];
+                            while (playersForMatch.length < 2) {
+                              playersForMatch.push(null);
+                            }
+                            const normalizedPlayers = playersForMatch.map(toPlayerId);
+                            const isActiveMatch = !!(currentMatchLocator
+                              && roundIndex === currentMatchLocator.roundIndex
+                              && matchIndex === currentMatchLocator.matchIndex);
+                            const isCurrentBattle = isActiveMatch && gameState?.phase === 'battling';
+                            const winnerId = toPlayerId(match?.winner);
+                            const status = match?.status === 'completed' || winnerId
+                              ? 'completed'
+                              : match?.status === 'in-progress' || isCurrentBattle
+                                ? 'in-progress'
+                                : 'pending';
+                            const statusLabel = status === 'completed'
+                              ? 'Completed'
+                              : status === 'in-progress'
+                                ? 'In Progress'
+                                : 'Pending';
+                            const matchBackground = status === 'completed'
+                              ? '#ECFCCB'
+                              : status === 'in-progress'
+                                ? '#FEF3C7'
+                                : '#F3F4F6';
+                            const matchBoxShadow = isActiveMatch ? '4px 4px 0px #2563eb' : '3px 3px 0px #555';
+
+                            return (
+                              <div
+                                key={match?.id || `${roundIndex}-${matchIndex}`}
+                                className={`border-2 ${isActiveMatch ? 'border-blue-600' : 'border-black'} bg-white p-3`}
+                                style={{ backgroundColor: matchBackground, boxShadow: matchBoxShadow }}
+                              >
+                                <div className="flex items-center justify-between text-[10px] font-bold uppercase mb-2">
+                                  <span>Match {matchIndex + 1}</span>
+                                  <span>{statusLabel}</span>
+                                </div>
+                                <div className="space-y-2">
+                                  {normalizedPlayers.map((playerId, slotIdx) => {
+                                    const player = playerId ? playersById[playerId] : null;
+                                    const avatarUrl = getPlayerAvatarUrl(player);
+                                    const avatarSrc = avatarUrl ? getProxiedImageUrl(avatarUrl) : null;
+                                    const displayName = playerId ? resolvePlayerName(playerId) : 'Awaiting Challenger';
+                                    const playerRowActive = isActiveMatch && !!playerId;
+                                    const isWinner = !!winnerId && playerId === winnerId;
+                                    const isLoser = status === 'completed' && winnerId && playerId && winnerId !== playerId;
+                                    const isEliminated = !!playerId && !isWinner && (isLoser || eliminatedSet.has(playerId));
+                                    let statusText;
+                                    if (!playerId) {
+                                      statusText = 'Awaiting player';
+                                    } else if (isWinner) {
+                                      statusText = 'Winner';
+                                    } else if (isEliminated) {
+                                      statusText = 'Eliminated';
+                                    } else {
+                                      statusText = player?.connected ? 'Connected' : 'Offline';
+                                    }
+                                    const statusClass = isWinner
+                                      ? 'text-green-700 font-bold'
+                                      : isEliminated
+                                        ? 'text-gray-500'
+                                        : 'text-gray-700';
+
+                                    return (
+                                      <div
+                                        key={`${match?.id || `${roundIndex}-${matchIndex}`}-${slotIdx}`}
+                                        className={`flex items-center gap-2 px-2 py-2 border ${playerRowActive ? 'border-blue-500 bg-blue-50' : 'border-black bg-white'}`}
+                                        style={{ boxShadow: '1px 1px 0px #777' }}
+                                      >
+                                        {avatarSrc ? (
+                                          <img
+                                            src={avatarSrc}
+                                            alt={`${displayName} avatar`}
+                                            className="w-8 h-8 object-cover border border-black bg-white"
+                                          />
+                                        ) : (
+                                          <div className="w-8 h-8 border border-black bg-white flex items-center justify-center text-xs font-bold">
+                                            {playerId ? `P${playerId}` : '?'}
+                                          </div>
+                                        )}
+                                        <div>
+                                          <div className={`text-sm font-bold ${isWinner ? 'text-green-700' : 'text-black'}`}>{displayName}</div>
+                                          <div className={`text-[10px] ${statusClass}`}>{statusText}</div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                                {winnerId && (
+                                  <div className="mt-3 text-[11px] font-bold flex items-center gap-1 text-green-700">
+                                    <span role="img" aria-label="Trophy">🏆</span>
+                                    <span>{resolvePlayerName(winnerId)}</span>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {showCompetitionSummary && (
               <div
@@ -831,7 +1161,7 @@ export default function CentralDisplay() {
                             #{index + 1}
                           </div>
                           <div>
-                            <div className="font-bold" style={{ fontSize: '16px' }}>Player {entry.playerId}</div>
+                          <div className="font-bold" style={{ fontSize: '16px' }}>{resolvePlayerName(entry.playerId)}</div>
                             <div style={{ fontSize: '10px' }}>
                               {entry.connected ? 'Connected' : 'Offline'}
                             </div>
@@ -859,37 +1189,84 @@ export default function CentralDisplay() {
             {/* Live Prompts Display */}
             {gameState?.phase === 'battling' && (
               <div className="mb-6">
-                <div className="grid grid-cols-2 gap-4 mb-6">
-                  {['1', '2'].map(playerId => (
-                    <div key={playerId} className="border-2 border-black p-3 bg-white" style={{
-                      boxShadow: '2px 2px 0px #999'
-                    }}>
-                      <h3 className="font-bold mb-2 text-center" style={{ fontSize: '20px' }}>
-                        Player {playerId}
-                      </h3>
-                      <div className="border border-black p-2 min-h-24 bg-gray-50 break-words whitespace-pre-wrap" style={{
-                        boxShadow: 'inset 1px 1px 0px #999',
-                        fontFamily: 'Chicago, monospace',
-                        fontSize: '14px',
-                        wordWrap: 'break-word',
-                        overflowWrap: 'break-word'
-                      }}>
-                        {prompts[playerId] || 'Thinking...'}
-                        {prompts[playerId] && <span className="animate-pulse">|</span>}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                  {promptPlayers.map((playerId, index) => {
+                    const normalizedId = playerId ? toPlayerId(playerId) : null;
+                    const key = normalizedId || `slot-${index}`;
+                    const player = normalizedId ? playersById[normalizedId] : null;
+                    const avatarUrl = getPlayerAvatarUrl(player);
+                    const avatarSrc = avatarUrl ? getProxiedImageUrl(avatarUrl) : null;
+                    const displayName = normalizedId
+                      ? resolvePlayerName(normalizedId)
+                      : `Awaiting ${index === 0 ? 'Challenger' : 'Opponent'}`;
+                    const statusText = normalizedId
+                      ? (player?.connected ? 'Connected' : 'Offline')
+                      : 'Awaiting player';
+                    const promptText = normalizedId
+                      ? (prompts[normalizedId] || 'Thinking...')
+                      : 'Waiting for competitor';
+                    const isActiveSlot = isKnockoutMode ? !!(normalizedId && promptHighlightSet.has(normalizedId)) : true;
+                    const cardBorderClass = isKnockoutMode && isActiveSlot ? 'border-blue-600 bg-blue-50' : 'border-black bg-white';
+                    const cardShadow = isKnockoutMode && isActiveSlot ? '4px 4px 0px #2563eb' : '2px 2px 0px #999';
+                    const promptBorderClass = isKnockoutMode && isActiveSlot ? 'border-blue-400 bg-blue-50' : 'border-black bg-gray-50';
+                    const promptBoxShadow = isKnockoutMode && isActiveSlot ? 'inset 2px 2px 0px #2563eb' : 'inset 1px 1px 0px #999';
+                    const showCursor = normalizedId && prompts[normalizedId];
+                    return (
+                      <div
+                        key={key}
+                        className={`border-2 ${cardBorderClass} p-3`}
+                        style={{ boxShadow: cardShadow }}
+                      >
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-3">
+                            {avatarSrc ? (
+                              <img
+                                src={avatarSrc}
+                                alt={`${displayName} avatar`}
+                                className="w-12 h-12 object-cover border border-black bg-white"
+                              />
+                            ) : (
+                              <div className="w-12 h-12 border border-black bg-white flex items-center justify-center text-sm font-bold">
+                                {normalizedId ? `P${normalizedId}` : '?'}
+                              </div>
+                            )}
+                            <div className="text-left">
+                              <h3 className="font-bold" style={{ fontSize: '18px' }}>{displayName}</h3>
+                              <div style={{ fontSize: '10px' }}>{statusText}</div>
+                            </div>
+                          </div>
+                          {isKnockoutMode && isActiveSlot && (
+                            <span className="text-[10px] font-bold uppercase text-blue-700">Active Match</span>
+                          )}
+                        </div>
+                        <div
+                          className={`border ${promptBorderClass} p-2 min-h-24 break-words whitespace-pre-wrap`}
+                          style={{
+                            boxShadow: promptBoxShadow,
+                            fontFamily: 'Chicago, monospace',
+                            fontSize: '14px',
+                            wordWrap: 'break-word',
+                            overflowWrap: 'break-word'
+                          }}
+                        >
+                          {promptText}
+                          {showCursor && <span className="animate-pulse">|</span>}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
-                
+
                 {/* Big Countdown Timer */}
                 <div className="text-center mb-4">
-                  <div className="border-2 border-black bg-white inline-block px-8 py-4" style={{
-                    boxShadow: '4px 4px 0px black'
-                  }}>
-                    <div className={`font-bold font-mono ${timer <= 10 ? 'animate-pulse text-red-600' : 'text-black'}`} style={{
-                      fontSize: '72px',
-                      fontFamily: 'Chicago, "SF Pro Display", system-ui, monospace'
-                    }}>
+                  <div
+                    className={`border-2 inline-block px-8 py-4 ${timerHighlight ? 'border-blue-600 bg-blue-50' : 'border-black bg-white'}`}
+                    style={{ boxShadow: timerHighlight ? '6px 6px 0px #2563eb' : '4px 4px 0px black' }}
+                  >
+                    <div
+                      className={`font-bold font-mono ${timer <= 10 ? 'animate-pulse text-red-600' : timerHighlight ? 'text-blue-700' : 'text-black'}`}
+                      style={{ fontSize: '72px', fontFamily: 'Chicago, "SF Pro Display", system-ui, monospace' }}
+                    >
                       {formatTime(timer)}
                     </div>
                   </div>
