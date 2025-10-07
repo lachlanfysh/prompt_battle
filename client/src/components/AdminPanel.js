@@ -682,20 +682,35 @@ export default function AdminPanel() {
               </a>
             </div>
 
-            {playerEntries.map(([playerId, player]) => {
-              const accent = getPlayerAccent(playerId);
-              const playerUrl = `/player/${playerId}`;
+            {quickAccessSlots.map(({ slotNumber, slotKey, player }) => {
+              const accent = getPlayerAccent(slotKey);
+              const playerUrl = `/player/${slotNumber}`;
               const playerOriginUrl = `${window.location.origin}${playerUrl}`;
+              const isConnected = !!player?.connected;
+              const isReserved = !!player && !player.connected;
+              const indicatorClass = isConnected
+                ? 'bg-green-400'
+                : isReserved
+                  ? 'bg-yellow-400'
+                  : 'bg-gray-500';
+              const statusClass = isConnected
+                ? 'text-green-300'
+                : isReserved
+                  ? 'text-yellow-300'
+                  : 'text-gray-400';
+              const statusLabel = isConnected
+                ? 'Connected'
+                : isReserved
+                  ? 'Reserved'
+                  : 'Available';
 
               return (
-                <div key={playerId} className="bg-gray-700 p-4 rounded-lg space-y-2">
+                <div key={slotNumber} className="bg-gray-700 p-4 rounded-lg space-y-2">
                   <div className="flex items-center justify-between">
-                    <h3 className={`font-semibold ${accent.title}`}>Player {playerId}</h3>
+                    <h3 className={`font-semibold ${accent.title}`}>Player {slotNumber}</h3>
                     <div className="flex items-center space-x-2 text-xs">
-                      <span className={`w-2 h-2 rounded-full ${player?.connected ? 'bg-green-400' : 'bg-gray-500'}`}></span>
-                      <span className={player?.connected ? 'text-green-300' : 'text-gray-400'}>
-                        {player?.connected ? 'Connected' : 'Available'}
-                      </span>
+                      <span className={`w-2 h-2 rounded-full ${indicatorClass}`}></span>
+                      <span className={statusClass}>{statusLabel}</span>
                     </div>
                   </div>
 
