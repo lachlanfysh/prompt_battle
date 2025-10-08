@@ -492,17 +492,24 @@ io.on('connection', (socket) => {
 
   // Player joins
   socket.on('join-player', (playerId) => {
-    console.log(`Player ${playerId} joined`);
-    gameState.players[playerId] = {
-      id: playerId,
+    const normalizedId = playerId != null ? String(playerId) : null;
+    if (!normalizedId) {
+      return;
+    }
+
+    console.log(`Player ${normalizedId} joined`);
+    const existingPlayer = gameState.players[normalizedId] || {};
+    gameState.players[normalizedId] = {
+      ...existingPlayer,
+      id: normalizedId,
       socketId: socket.id,
       connected: true,
       ready: false
     };
     if (gameState.competitionActive) {
-      ensureScoreEntry(playerId);
+      ensureScoreEntry(normalizedId);
     }
-    socket.join(`player-${playerId}`);
+    socket.join(`player-${normalizedId}`);
     socket.emit('game-state', gameState);
     socket.broadcast.emit('game-state', gameState);
   });
@@ -608,6 +615,46 @@ io.on('connection', (socket) => {
     // Send live prompt updates to display
     io.to('display').emit('prompt-update', { playerId: normalizedId, prompt });
     io.to('admin').emit('prompt-update', { playerId: normalizedId, prompt });
+  });
+
+  socket.on('update-player-name', (data = {}, callback) => {
+    const normalizedId = data?.playerId != null ? String(data.playerId) : null;
+    const rawName = typeof data?.displayName === 'string' ? data.displayName : '';
+
+    if (!normalizedId) {
+      if (typeof callback === 'function') {
+        callback({ success: false, error: 'Invalid player ID' });
+      }
+      return;
+    }
+
+    const playerEntry = gameState.players[normalizedId];
+    if (!playerEntry) {
+      if (typeof callback === 'function') {
+        callback({ success: false, error: 'Player is not connected' });
+      }
+      return;
+    }
+
+    const trimmed = rawName.trim();
+    const normalizedName = trimmed.replace(/\s+/g, ' ');
+    const sanitized = normalizedName.slice(0, 32);
+
+    const updatedPlayer = {
+      ...playerEntry,
+      displayName: sanitized || undefined
+    };
+
+    if (!sanitized) {
+      delete updatedPlayer.displayName;
+    }
+
+    gameState.players[normalizedId] = updatedPlayer;
+    io.emit('game-state', gameState);
+
+    if (typeof callback === 'function') {
+      callback({ success: true, displayName: sanitized });
+    }
   });
 
   // Player ready status

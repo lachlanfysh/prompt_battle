@@ -455,6 +455,7 @@ export default function CentralDisplay() {
   const [bracketChampion, setBracketChampion] = useState(null);
   const waitingContainerRef = useRef(null);
   const [playerBoxes, setPlayerBoxes] = useState([]);
+  const [showBracket, setShowBracket] = useState(true);
   const previousPhaseRef = useRef();
   const qrCodesRef = useRef({});
 
@@ -476,6 +477,16 @@ export default function CentralDisplay() {
     () => Array.from({ length: playerSlotCount }, (_, idx) => idx + 1),
     [playerSlotCount]
   );
+
+  const nextChallengerId = useMemo(() => {
+    for (const id of slotIds) {
+      const playerEntry = gameState?.players?.[String(id)];
+      if (!playerEntry) {
+        return id;
+      }
+    }
+    return null;
+  }, [slotIds, gameState?.players]);
 
   const waitingGridClass = useMemo(() => {
     if (playerSlotCount <= 2) {
@@ -982,125 +993,139 @@ export default function CentralDisplay() {
             )}
 
             {isKnockoutMode && bracketRounds.length > 0 && (
-              <div
-                className="border-2 border-black bg-white p-4 mb-6 overflow-x-auto"
-                style={{ boxShadow: '3px 3px 0px black' }}
-              >
-                <div className="flex items-start gap-4" style={{ minWidth: `${Math.max(1, bracketRounds.length) * 220}px` }}>
-                  {bracketRounds.map((round, roundIndex) => {
-                    const roundLabel = getRoundLabel(round, roundIndex, bracketRounds.length);
-                    return (
-                      <div key={`round-${roundIndex}`} className="min-w-[200px]">
-                        <div
-                          className="border border-black bg-gray-200 text-center font-bold uppercase text-xs py-1"
-                          style={{ boxShadow: '2px 2px 0px #777' }}
-                        >
-                          {roundLabel}
-                        </div>
-                        <div className="flex flex-col gap-3 mt-3">
-                          {(round.matches || []).map((match, matchIndex) => {
-                            const playersForMatch = Array.isArray(match?.players) ? match.players.slice(0, 2) : [];
-                            while (playersForMatch.length < 2) {
-                              playersForMatch.push(null);
-                            }
-                            const normalizedPlayers = playersForMatch.map(toPlayerId);
-                            const isActiveMatch = !!(currentMatchLocator
-                              && roundIndex === currentMatchLocator.roundIndex
-                              && matchIndex === currentMatchLocator.matchIndex);
-                            const isCurrentBattle = isActiveMatch && gameState?.phase === 'battling';
-                            const winnerId = toPlayerId(match?.winner);
-                            const status = match?.status === 'completed' || winnerId
-                              ? 'completed'
-                              : match?.status === 'in-progress' || isCurrentBattle
-                                ? 'in-progress'
-                                : 'pending';
-                            const statusLabel = status === 'completed'
-                              ? 'Completed'
-                              : status === 'in-progress'
-                                ? 'In Progress'
-                                : 'Pending';
-                            const matchBackground = status === 'completed'
-                              ? '#ECFCCB'
-                              : status === 'in-progress'
-                                ? '#FEF3C7'
-                                : '#F3F4F6';
-                            const matchBoxShadow = isActiveMatch ? '4px 4px 0px #2563eb' : '3px 3px 0px #555';
-
-                            return (
-                              <div
-                                key={match?.id || `${roundIndex}-${matchIndex}`}
-                                className={`border-2 ${isActiveMatch ? 'border-blue-600' : 'border-black'} bg-white p-3`}
-                                style={{ backgroundColor: matchBackground, boxShadow: matchBoxShadow }}
-                              >
-                                <div className="flex items-center justify-between text-[10px] font-bold uppercase mb-2">
-                                  <span>Match {matchIndex + 1}</span>
-                                  <span>{statusLabel}</span>
-                                </div>
-                                <div className="space-y-2">
-                                  {normalizedPlayers.map((playerId, slotIdx) => {
-                                    const player = playerId ? playersById[playerId] : null;
-                                    const avatarUrl = getPlayerAvatarUrl(player);
-                                    const avatarSrc = avatarUrl ? getProxiedImageUrl(avatarUrl) : null;
-                                    const displayName = playerId ? resolvePlayerName(playerId) : 'Awaiting Challenger';
-                                    const playerRowActive = isActiveMatch && !!playerId;
-                                    const isWinner = !!winnerId && playerId === winnerId;
-                                    const isLoser = status === 'completed' && winnerId && playerId && winnerId !== playerId;
-                                    const isEliminated = !!playerId && !isWinner && (isLoser || eliminatedSet.has(playerId));
-                                    let statusText;
-                                    if (!playerId) {
-                                      statusText = 'Awaiting player';
-                                    } else if (isWinner) {
-                                      statusText = 'Winner';
-                                    } else if (isEliminated) {
-                                      statusText = 'Eliminated';
-                                    } else {
-                                      statusText = player?.connected ? 'Connected' : 'Offline';
-                                    }
-                                    const statusClass = isWinner
-                                      ? 'text-green-700 font-bold'
-                                      : isEliminated
-                                        ? 'text-gray-500'
-                                        : 'text-gray-700';
-
-                                    return (
-                                      <div
-                                        key={`${match?.id || `${roundIndex}-${matchIndex}`}-${slotIdx}`}
-                                        className={`flex items-center gap-2 px-2 py-2 border ${playerRowActive ? 'border-blue-500 bg-blue-50' : 'border-black bg-white'}`}
-                                        style={{ boxShadow: '1px 1px 0px #777' }}
-                                      >
-                                        {avatarSrc ? (
-                                          <img
-                                            src={avatarSrc}
-                                            alt={`${displayName} avatar`}
-                                            className="w-8 h-8 object-cover border border-black bg-white"
-                                          />
-                                        ) : (
-                                          <div className="w-8 h-8 border border-black bg-white flex items-center justify-center text-xs font-bold">
-                                            {playerId ? `P${playerId}` : '?'}
-                                          </div>
-                                        )}
-                                        <div>
-                                          <div className={`text-sm font-bold ${isWinner ? 'text-green-700' : 'text-black'}`}>{displayName}</div>
-                                          <div className={`text-[10px] ${statusClass}`}>{statusText}</div>
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                                {winnerId && (
-                                  <div className="mt-3 text-[11px] font-bold flex items-center gap-1 text-green-700">
-                                    <span role="img" aria-label="Trophy">🏆</span>
-                                    <span>{resolvePlayerName(winnerId)}</span>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })}
+              <div className="mb-6">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-2">
+                  <div className="text-sm font-bold uppercase tracking-wide">Knockout Bracket</div>
+                  <button
+                    onClick={() => setShowBracket(prev => !prev)}
+                    className="self-start sm:self-auto border border-black px-3 py-1 text-xs font-bold bg-white hover:bg-black hover:text-white"
+                    style={{ boxShadow: '2px 2px 0px #555' }}
+                  >
+                    {showBracket ? 'Hide Bracket' : 'Show Bracket'}
+                  </button>
                 </div>
+                {showBracket && (
+                  <div
+                    className="border-2 border-black bg-white p-4 overflow-x-auto"
+                    style={{ boxShadow: '3px 3px 0px black' }}
+                  >
+                    <div className="flex items-start gap-4" style={{ minWidth: `${Math.max(1, bracketRounds.length) * 220}px` }}>
+                      {bracketRounds.map((round, roundIndex) => {
+                        const roundLabel = getRoundLabel(round, roundIndex, bracketRounds.length);
+                        return (
+                          <div key={`round-${roundIndex}`} className="min-w-[200px]">
+                            <div
+                              className="border border-black bg-gray-200 text-center font-bold uppercase text-xs py-1"
+                              style={{ boxShadow: '2px 2px 0px #777' }}
+                            >
+                              {roundLabel}
+                            </div>
+                            <div className="flex flex-col gap-3 mt-3">
+                              {(round.matches || []).map((match, matchIndex) => {
+                                const playersForMatch = Array.isArray(match?.players) ? match.players.slice(0, 2) : [];
+                                while (playersForMatch.length < 2) {
+                                  playersForMatch.push(null);
+                                }
+                                const normalizedPlayers = playersForMatch.map(toPlayerId);
+                                const isActiveMatch = !!(currentMatchLocator
+                                  && roundIndex === currentMatchLocator.roundIndex
+                                  && matchIndex === currentMatchLocator.matchIndex);
+                                const isCurrentBattle = isActiveMatch && gameState?.phase === 'battling';
+                                const winnerId = toPlayerId(match?.winner);
+                                const status = match?.status === 'completed' || winnerId
+                                  ? 'completed'
+                                  : match?.status === 'in-progress' || isCurrentBattle
+                                    ? 'in-progress'
+                                    : 'pending';
+                                const statusLabel = status === 'completed'
+                                  ? 'Completed'
+                                  : status === 'in-progress'
+                                    ? 'In Progress'
+                                    : 'Pending';
+                                const matchBackground = status === 'completed'
+                                  ? '#ECFCCB'
+                                  : status === 'in-progress'
+                                    ? '#FEF3C7'
+                                    : '#F3F4F6';
+                                const matchBoxShadow = isActiveMatch ? '4px 4px 0px #2563eb' : '3px 3px 0px #555';
+
+                                return (
+                                  <div
+                                    key={match?.id || `${roundIndex}-${matchIndex}`}
+                                    className={`border-2 ${isActiveMatch ? 'border-blue-600' : 'border-black'} bg-white p-3`}
+                                    style={{ backgroundColor: matchBackground, boxShadow: matchBoxShadow }}
+                                  >
+                                    <div className="flex items-center justify-between text-[10px] font-bold uppercase mb-2">
+                                      <span>Match {matchIndex + 1}</span>
+                                      <span>{statusLabel}</span>
+                                    </div>
+                                    <div className="space-y-2">
+                                      {normalizedPlayers.map((playerId, slotIdx) => {
+                                        const player = playerId ? playersById[playerId] : null;
+                                        const avatarUrl = getPlayerAvatarUrl(player);
+                                        const avatarSrc = avatarUrl ? getProxiedImageUrl(avatarUrl) : null;
+                                        const displayName = playerId ? resolvePlayerName(playerId) : 'Awaiting Challenger';
+                                        const playerRowActive = isActiveMatch && !!playerId;
+                                        const isWinner = !!winnerId && playerId === winnerId;
+                                        const isLoser = status === 'completed' && winnerId && playerId && winnerId !== playerId;
+                                        const isEliminated = !!playerId && !isWinner && (isLoser || eliminatedSet.has(playerId));
+                                        let statusText;
+                                        if (!playerId) {
+                                          statusText = 'Awaiting player';
+                                        } else if (isWinner) {
+                                          statusText = 'Winner';
+                                        } else if (isEliminated) {
+                                          statusText = 'Eliminated';
+                                        } else {
+                                          statusText = player?.connected ? 'Connected' : 'Offline';
+                                        }
+                                        const statusClass = isWinner
+                                          ? 'text-green-700 font-bold'
+                                          : isEliminated
+                                            ? 'text-gray-500'
+                                            : 'text-gray-700';
+
+                                        return (
+                                          <div
+                                            key={`${match?.id || `${roundIndex}-${matchIndex}`}-${slotIdx}`}
+                                            className={`flex items-center gap-2 px-2 py-2 border ${playerRowActive ? 'border-blue-500 bg-blue-50' : 'border-black bg-white'}`}
+                                            style={{ boxShadow: '1px 1px 0px #777' }}
+                                          >
+                                            {avatarSrc ? (
+                                              <img
+                                                src={avatarSrc}
+                                                alt={`${displayName} avatar`}
+                                                className="w-8 h-8 object-cover border border-black bg-white"
+                                              />
+                                            ) : (
+                                              <div className="w-8 h-8 border border-black bg-white flex items-center justify-center text-xs font-bold">
+                                                {playerId ? `P${playerId}` : '?'}
+                                              </div>
+                                            )}
+                                            <div>
+                                              <div className={`text-sm font-bold ${isWinner ? 'text-green-700' : 'text-black'}`}>{displayName}</div>
+                                              <div className={`text-[10px] ${statusClass}`}>{statusText}</div>
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                    {winnerId && (
+                                      <div className="mt-3 text-[11px] font-bold flex items-center gap-1 text-green-700">
+                                        <span role="img" aria-label="Trophy">🏆</span>
+                                        <span>{resolvePlayerName(winnerId)}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1447,7 +1472,7 @@ export default function CentralDisplay() {
               <div className="text-center">
                 <div className="text-8xl mb-4">🏆</div>
                 <h2 className="font-bold mb-6" style={{ fontSize: '32px' }}>
-                  PLAYER {gameState.winner} WINS!
+                  {resolvePlayerName(toPlayerId(gameState.winner))} WINS!
                 </h2>
                 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-4xl mx-auto">
@@ -1492,7 +1517,7 @@ export default function CentralDisplay() {
                     {nextChallengerId ? (
                       <>
                         <h4 className="font-bold mb-4" style={{ fontSize: '24px' }}>
-                          Player {nextChallengerId}
+                          {resolvePlayerName(toPlayerId(nextChallengerId))}
                         </h4>
 
                         <div className="mb-4">
@@ -1522,7 +1547,7 @@ export default function CentralDisplay() {
                         </div>
 
                         <p style={{ fontSize: '14px' }} className="mb-3">
-                          Scan to challenge the winner!
+                          Scan to join as Player {nextChallengerId}!
                         </p>
 
                         <div className="border border-black p-2 bg-gray-100" style={{
@@ -1557,13 +1582,15 @@ export default function CentralDisplay() {
                   {slotIds.map((playerId) => {
                     const slotKey = String(playerId);
                     const player = gameState?.players?.[slotKey];
+                    const displayName = player?.displayName?.trim();
+                    const cardTitle = displayName ? `${displayName} (Player ${playerId})` : `Player ${playerId}`;
 
                     return (
                       <div key={playerId} className="border-2 border-black p-6 bg-white" style={{
                         boxShadow: '4px 4px 0px #999'
                       }}>
                         <h3 className="font-bold mb-4" style={{ fontSize: '24px' }}>
-                          Player {playerId}
+                          {cardTitle}
                         </h3>
 
                         <div className="mb-4">
