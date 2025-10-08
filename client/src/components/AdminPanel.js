@@ -137,14 +137,32 @@ export default function AdminPanel() {
     return { rounds };
   }, [getRoundName]);
 
+  const getPlayerDisplayName = useCallback((playerId) => {
+    if (!playerId) {
+      return '';
+    }
+
+    const record = gameState?.players?.[playerId];
+    const displayName = record?.displayName;
+
+    if (typeof displayName === 'string') {
+      const trimmed = displayName.trim();
+      if (trimmed) {
+        return trimmed;
+      }
+    }
+
+    return '';
+  }, [gameState?.players]);
+
   const getPlayerLabel = useCallback((playerId) => {
     if (!playerId) return 'TBD';
-    const record = gameState?.players?.[playerId];
-    if (record?.name) {
-      return `${record.name} (P${playerId})`;
+    const displayName = getPlayerDisplayName(playerId);
+    if (displayName) {
+      return `${displayName} (P${playerId})`;
     }
     return `Player ${playerId}`;
-  }, [gameState?.players]);
+  }, [getPlayerDisplayName]);
 
   const playerEntries = useMemo(() => {
     const entries = Object.entries(gameState?.players || {});
@@ -740,10 +758,15 @@ export default function AdminPanel() {
                   ? 'Reserved'
                   : 'Available';
 
+              const displayName = getPlayerDisplayName(slotKey);
+              const headerLabel = displayName
+                ? `${displayName} (P${slotNumber})`
+                : `Player ${slotNumber}`;
+
               return (
                 <div key={slotNumber} className="bg-gray-700 p-4 rounded-lg space-y-2">
                   <div className="flex items-center justify-between">
-                    <h3 className={`font-semibold ${accent.title}`}>Player {slotNumber}</h3>
+                    <h3 className={`font-semibold ${accent.title}`}>{headerLabel}</h3>
                     <div className="flex items-center space-x-2 text-xs">
                       <span className={`w-2 h-2 rounded-full ${indicatorClass}`}></span>
                       <span className={statusClass}>{statusLabel}</span>
@@ -784,7 +807,7 @@ export default function AdminPanel() {
                       <div className={`w-3 h-3 rounded-full ${
                         player?.connected ? 'bg-green-500' : 'bg-gray-500'
                       }`}></div>
-                      <span>Player {playerId}</span>
+                      <span>{getPlayerLabel(playerId)}</span>
                       {player?.ready && (
                         <span className="text-green-400 text-sm">✓ Ready</span>
                       )}
