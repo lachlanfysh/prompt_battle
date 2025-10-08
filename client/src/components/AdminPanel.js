@@ -496,6 +496,31 @@ export default function AdminPanel() {
     return Math.max(playerEntries.length, 2);
   }, [gameState?.playerSlots, playerEntries.length]);
 
+  const quickAccessSlots = useMemo(() => {
+    const playersById = gameState?.players || {};
+    return Array.from({ length: totalPlayerSlots }, (_, index) => {
+      const slotNumber = index + 1;
+      const slotKey = String(slotNumber);
+      return {
+        slotNumber,
+        slotKey,
+        player: playersById[slotKey] || null
+      };
+    });
+  }, [gameState?.players, totalPlayerSlots]);
+
+  const getPlayerAccent = useCallback((slotKey) => {
+    const numericIndex = Number(slotKey);
+    if (Number.isFinite(numericIndex) && numericIndex > 0) {
+      return SLOT_ACCENTS[(numericIndex - 1) % SLOT_ACCENTS.length];
+    }
+
+    const seed = String(slotKey || '')
+      .split('')
+      .reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    return SLOT_ACCENTS[seed % SLOT_ACCENTS.length];
+  }, []);
+
   const highestActiveSlot = useMemo(() => {
     return playerEntries.reduce((max, [playerId]) => {
       const numericId = Number(playerId);
