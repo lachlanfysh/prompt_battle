@@ -3,6 +3,17 @@ import { Settings, Play, RotateCcw, Timer, Users, Monitor, Trophy, Flag, Target,
 import io from 'socket.io-client';
 import { getSocketURL, getProxiedImageUrl } from '../utils/network';
 
+const SLOT_ACCENTS = [
+  { title: 'text-blue-300', link: 'text-blue-200' },
+  { title: 'text-emerald-300', link: 'text-emerald-200' },
+  { title: 'text-purple-300', link: 'text-purple-200' },
+  { title: 'text-amber-300', link: 'text-amber-200' },
+  { title: 'text-rose-300', link: 'text-rose-200' },
+  { title: 'text-sky-300', link: 'text-sky-200' },
+  { title: 'text-fuchsia-300', link: 'text-fuchsia-200' },
+  { title: 'text-lime-300', link: 'text-lime-200' }
+];
+
 export default function AdminPanel() {
   const [socket, setSocket] = useState(null);
   const [gameState, setGameState] = useState(null);
