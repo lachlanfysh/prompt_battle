@@ -488,6 +488,13 @@ export default function CentralDisplay() {
     return null;
   }, [slotIds, gameState?.players]);
 
+  const nextChallengerPlayer = useMemo(() => {
+    if (!nextChallengerId) return null;
+    return gameState?.players?.[String(nextChallengerId)] || null;
+  }, [gameState?.players, nextChallengerId]);
+
+  const nextChallengerConnected = !!nextChallengerPlayer?.connected;
+
   const waitingGridClass = useMemo(() => {
     if (playerSlotCount <= 2) {
       return 'relative z-10 grid grid-cols-1 sm:grid-cols-2 gap-8 max-w-3xl mx-auto px-6';
@@ -1520,43 +1527,51 @@ export default function CentralDisplay() {
                           {resolvePlayerName(toPlayerId(nextChallengerId))}
                         </h4>
 
-                        <div className="mb-4">
-                          {qrCodes[String(nextChallengerId)] ? (
-                            <img
-                              src={qrCodes[String(nextChallengerId)]}
-                              alt={`QR Code for Player ${nextChallengerId}`}
-                              className="mx-auto border-2 border-black bg-white"
-                              style={{
-                                width: '180px',
-                                height: '180px',
-                                boxShadow: '2px 2px 0px #999'
-                              }}
-                            />
-                          ) : (
-                            <div
-                              className="mx-auto border-2 border-black bg-gray-100 flex items-center justify-center"
-                              style={{
-                                width: '180px',
-                                height: '180px',
-                                boxShadow: '2px 2px 0px #999'
-                              }}
-                            >
-                              <span style={{ fontSize: '14px' }}>Loading QR...</span>
+                        {nextChallengerConnected ? (
+                          <div className="mb-3 text-green-700 font-bold" style={{ fontSize: '16px' }}>
+                            Player {nextChallengerId} is connected and ready!
+                          </div>
+                        ) : (
+                          <>
+                            <div className="mb-4">
+                              {qrCodes[String(nextChallengerId)] ? (
+                                <img
+                                  src={qrCodes[String(nextChallengerId)]}
+                                  alt={`QR Code for Player ${nextChallengerId}`}
+                                  className="mx-auto border-2 border-black bg-white"
+                                  style={{
+                                    width: '180px',
+                                    height: '180px',
+                                    boxShadow: '2px 2px 0px #999'
+                                  }}
+                                />
+                              ) : (
+                                <div
+                                  className="mx-auto border-2 border-black bg-gray-100 flex items-center justify-center"
+                                  style={{
+                                    width: '180px',
+                                    height: '180px',
+                                    boxShadow: '2px 2px 0px #999'
+                                  }}
+                                >
+                                  <span style={{ fontSize: '14px' }}>Loading QR...</span>
+                                </div>
+                              )}
                             </div>
-                          )}
-                        </div>
 
-                        <p style={{ fontSize: '14px' }} className="mb-3">
-                          Scan to join as Player {nextChallengerId}!
-                        </p>
+                            <p style={{ fontSize: '14px' }} className="mb-3">
+                              Scan to join as Player {nextChallengerId}!
+                            </p>
 
-                        <div className="border border-black p-2 bg-gray-100" style={{
-                          boxShadow: 'inset 1px 1px 0px #999'
-                        }}>
-                          <p style={{ fontSize: '10px', fontFamily: 'Chicago, monospace' }}>
-                            {window.location.origin}/player/{nextChallengerId}
-                          </p>
-                        </div>
+                            <div className="border border-black p-2 bg-gray-100" style={{
+                              boxShadow: 'inset 1px 1px 0px #999'
+                            }}>
+                              <p style={{ fontSize: '10px', fontFamily: 'Chicago, monospace' }}>
+                                {window.location.origin}/player/{nextChallengerId}
+                              </p>
+                            </div>
+                          </>
+                        )}
                       </>
                     ) : (
                       <div className="space-y-3" style={{ fontSize: '14px' }}>
@@ -1593,45 +1608,53 @@ export default function CentralDisplay() {
                           {cardTitle}
                         </h3>
 
-                        <div className="mb-4">
-                          {qrCodes[slotKey] ? (
-                            <img
-                              src={qrCodes[slotKey]}
-                              alt={`QR Code for Player ${playerId}`}
-                              className="mx-auto border-2 border-black"
-                              style={{
-                                width: '150px',
-                                height: '150px',
-                                boxShadow: '2px 2px 0px #999'
-                              }}
-                            />
-                          ) : (
-                            <div
-                              className="mx-auto border-2 border-black bg-gray-100 flex items-center justify-center"
-                              style={{
-                                width: '150px',
-                                height: '150px',
-                                boxShadow: '2px 2px 0px #999'
-                              }}
-                            >
-                              <span style={{ fontSize: '12px' }}>Loading QR...</span>
-                            </div>
-                          )}
-                        </div>
-
                         <div className="mb-3">
                           <p style={{ fontSize: '18px' }} className="font-bold">
                             Status: {player?.connected ? '✓ Connected' : '○ Waiting...'}
                           </p>
                         </div>
 
-                        <div className="border border-black p-2 bg-gray-100" style={{
-                          boxShadow: 'inset 1px 1px 0px #999'
-                        }}>
-                          <p style={{ fontSize: '10px', fontFamily: 'Chicago, monospace' }}>
-                            {window.location.origin}/player/{playerId}
-                          </p>
-                        </div>
+                        {player?.connected ? (
+                          <div className="text-green-700 font-bold" style={{ fontSize: '16px' }}>
+                            Player {playerId} connected!
+                          </div>
+                        ) : (
+                          <>
+                            <div className="mb-4">
+                              {qrCodes[slotKey] ? (
+                                <img
+                                  src={qrCodes[slotKey]}
+                                  alt={`QR Code for Player ${playerId}`}
+                                  className="mx-auto border-2 border-black"
+                                  style={{
+                                    width: '150px',
+                                    height: '150px',
+                                    boxShadow: '2px 2px 0px #999'
+                                  }}
+                                />
+                              ) : (
+                                <div
+                                  className="mx-auto border-2 border-black bg-gray-100 flex items-center justify-center"
+                                  style={{
+                                    width: '150px',
+                                    height: '150px',
+                                    boxShadow: '2px 2px 0px #999'
+                                  }}
+                                >
+                                  <span style={{ fontSize: '12px' }}>Loading QR...</span>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="border border-black p-2 bg-gray-100" style={{
+                              boxShadow: 'inset 1px 1px 0px #999'
+                            }}>
+                              <p style={{ fontSize: '10px', fontFamily: 'Chicago, monospace' }}>
+                                {window.location.origin}/player/{playerId}
+                              </p>
+                            </div>
+                          </>
+                        )}
                       </div>
                     );
                   })}
