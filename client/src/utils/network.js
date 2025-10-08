@@ -17,11 +17,20 @@ export const getSocketURL = () => {
 export const getProxiedImageUrl = (originalUrl) => {
   if (!originalUrl) return originalUrl;
 
+  const baseUrl = process.env.NODE_ENV === 'production'
+    ? buildBaseUrl()
+    : buildBaseUrl('3001');
+
   if (originalUrl.startsWith('https://oaidalleapiprodscus.blob.core.windows.net/')) {
-    const baseUrl = process.env.NODE_ENV === 'production'
-      ? buildBaseUrl()
-      : buildBaseUrl('3001');
     return `${baseUrl}/api/proxy-image?url=${encodeURIComponent(originalUrl)}`;
+  }
+
+  if (/^https?:\/\//i.test(originalUrl) || originalUrl.startsWith('data:')) {
+    return originalUrl;
+  }
+
+  if (originalUrl.startsWith('/')) {
+    return `${baseUrl}${originalUrl}`;
   }
 
   return originalUrl;
