@@ -1500,8 +1500,8 @@ export default function AdminPanel() {
                 <div className="mb-4 p-4 bg-gray-700 rounded-lg">
                   <h3 className="font-semibold mb-2">Selected Image:</h3>
                   <div className="flex items-center space-x-4">
-                    <img 
-                      src={selectedImage.url} 
+                    <img
+                      src={getProxiedImageUrl(selectedImage.url)}
                       alt={selectedImage.displayName}
                       className="w-24 h-24 object-cover rounded"
                     />
