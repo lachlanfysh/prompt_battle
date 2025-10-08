@@ -208,6 +208,58 @@ export default function PlayerInterface({ playerId }) {
 
   const isPlayerEliminated = eliminatedSet.has(playerKey);
 
+  const activeMatchPlayers = useMemo(() => {
+    if (!isKnockoutMode) return null;
+
+    const locator = bracketState.currentMatch;
+    if (!locator) return null;
+
+    const round = bracketState.bracket?.rounds?.[locator.roundIndex];
+    const match = round?.matches?.[locator.matchIndex];
+    if (!match || !Array.isArray(match.players)) return null;
+
+    return match.players
+      .map(player => (player != null ? String(player) : null))
+      .filter(Boolean);
+  }, [
+    isKnockoutMode,
+    bracketState.currentMatch,
+    bracketState.bracket
+  ]);
+
+  const isPlayerActiveThisRound = useMemo(() => {
+    if (isPlayerEliminated) return false;
+    if (!isKnockoutMode) return true;
+
+    const players = activeMatchPlayers;
+    if (!players || players.length === 0) return false;
+
+    return players.includes(playerKey);
+  }, [
+    activeMatchPlayers,
+    isKnockoutMode,
+    isPlayerEliminated,
+    playerKey
+  ]);
+
+  const isWaitingForMatch = useMemo(() => {
+    if (!isKnockoutMode || isPlayerEliminated) {
+      return false;
+    }
+
+    const players = activeMatchPlayers;
+    if (!players || players.length === 0) {
+      return false;
+    }
+
+    return !players.includes(playerKey);
+  }, [
+    activeMatchPlayers,
+    isKnockoutMode,
+    isPlayerEliminated,
+    playerKey
+  ]);
+
   const playerBracketMatches = useMemo(() => {
     if (!bracketRounds.length) return { nextMatch: null, lastCompleted: null };
 
@@ -328,13 +380,24 @@ export default function PlayerInterface({ playerId }) {
     const value = e.target.value;
     setPrompt(value);
 
-    if (socket && gameState?.phase === 'battling' && !isPlayerEliminated) {
+    if (
+      socket &&
+      gameState?.phase === 'battling' &&
+      !isPlayerEliminated &&
+      isPlayerActiveThisRound
+    ) {
       socket.emit('prompt-update', { playerId, prompt: value });
     }
-  }, [socket, gameState?.phase, playerId, isPlayerEliminated]);
+  }, [
+    socket,
+    gameState?.phase,
+    playerId,
+    isPlayerEliminated,
+    isPlayerActiveThisRound
+  ]);
 
   const handleReady = () => {
-    if (socket && !isPlayerEliminated) {
+    if (socket && !isPlayerEliminated && isPlayerActiveThisRound) {
       socket.emit('player-ready', playerId);
     }
   };
@@ -348,6 +411,13 @@ export default function PlayerInterface({ playerId }) {
   const getPhaseDisplay = () => {
     if (isPlayerEliminated) {
       return 'You have been eliminated from the bracket.';
+    }
+
+    if (isWaitingForMatch) {
+      if (gameState?.phase === 'waiting') {
+        return 'Waiting for your match assignment...';
+      }
+      return 'Please wait—another match is currently in progress.';
     }
 
     switch (gameState?.phase) {
@@ -581,8 +651,19 @@ export default function PlayerInterface({ playerId }) {
               </div>
             )}
 
+            {isWaitingForMatch && (
+              <div
+                className="mb-6 border-2 border-dashed border-gray-400 bg-gray-100 p-4 text-center"
+                style={{ fontSize: '12px' }}
+              >
+                It's not your round right now. Sit tight while the current match finishes.
+              </div>
+            )}
+
             {/* Prompt Input */}
-            {(gameState?.phase === 'battling' || gameState?.phase === 'ready') && (
+            {(gameState?.phase === 'battling' || gameState?.phase === 'ready') &&
+              isPlayerActiveThisRound &&
+              !isPlayerEliminated && (
               <div className="mb-6">
                 <label className="block font-bold mb-2" style={{ fontSize: '12px' }}>
                   Your Prompt:
@@ -591,12 +672,19 @@ export default function PlayerInterface({ playerId }) {
                   value={prompt}
                   onChange={handlePromptChange}
                   placeholder="Write your image generation prompt here..."
-                  disabled={gameState?.phase !== 'battling' || isPlayerEliminated}
+                  disabled={
+                    gameState?.phase !== 'battling' ||
+                    isPlayerEliminated ||
+                    !isPlayerActiveThisRound
+                  }
                   className="w-full h-32 p-2 border-2 border-black resize-none"
                   style={{
                     fontFamily: 'Chicago, "SF Pro Display", system-ui, sans-serif',
                     fontSize: '11px',
-                    backgroundColor: gameState?.phase === 'battling' && !isPlayerEliminated ? 'white' : '#f0f0f0',
+                    backgroundColor:
+                      gameState?.phase === 'battling' && !isPlayerEliminated && isPlayerActiveThisRound
+                        ? 'white'
+                        : '#f0f0f0',
                     boxShadow: 'inset 2px 2px 0px #999'
                   }}
                   maxLength={500}
@@ -608,7 +696,10 @@ export default function PlayerInterface({ playerId }) {
             )}
 
             {/* Ready Button */}
-            {gameState?.phase === 'ready' && !gameState?.players?.[playerId]?.ready && (
+            {gameState?.phase === 'ready' &&
+              !gameState?.players?.[playerId]?.ready &&
+              isPlayerActiveThisRound &&
+              !isPlayerEliminated && (
               <div className="text-center">
                 <button
                   onClick={handleReady}
@@ -618,7 +709,7 @@ export default function PlayerInterface({ playerId }) {
                     fontSize: '12px',
                     boxShadow: '2px 2px 0px #999'
                   }}
-                  disabled={isPlayerEliminated}
+                  disabled={isPlayerEliminated || !isPlayerActiveThisRound}
                 >
                   I'm Ready!
                 </button>
