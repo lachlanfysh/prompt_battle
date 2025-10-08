@@ -15,6 +15,10 @@ export default function PlayerInterface({ playerId }) {
     eliminatedPlayers: [],
     champion: null
   });
+  const [nameInput, setNameInput] = useState('');
+  const [isSavingName, setIsSavingName] = useState(false);
+  const [nameFeedback, setNameFeedback] = useState(null);
+  const [nameDirty, setNameDirty] = useState(false);
   const previousPhaseRef = useRef();
   const playerKey = String(playerId);
 
@@ -31,6 +35,31 @@ export default function PlayerInterface({ playerId }) {
         return Number(a.playerId) - Number(b.playerId);
       });
   }, [gameState?.scores, gameState?.players]);
+
+  const serverDisplayName = useMemo(() => {
+    const value = gameState?.players?.[playerKey]?.displayName;
+    return typeof value === 'string' ? value : '';
+  }, [gameState?.players, playerKey]);
+
+  useEffect(() => {
+    if (!nameDirty) {
+      setNameInput(serverDisplayName);
+    }
+  }, [serverDisplayName, nameDirty]);
+
+  const trimmedServerName = serverDisplayName.trim();
+  const trimmedNameInput = nameInput.trim();
+  const resolvedPlayerName = trimmedServerName || null;
+  const playerWindowTitle = resolvedPlayerName
+    ? `${resolvedPlayerName} (Player ${playerId})`
+    : `Player ${playerId}`;
+  const isNameChanged = trimmedNameInput !== trimmedServerName;
+  const nameFeedbackClass = nameFeedback?.type === 'success'
+    ? 'text-green-700'
+    : nameFeedback?.type === 'error'
+      ? 'text-red-600'
+      : 'text-gray-700';
+  const canSaveName = !!socket && isNameChanged && !isSavingName;
 
   const playerScore = gameState?.scores?.[playerKey] || 0;
   const playerRank = standings.findIndex(entry => entry.playerId === playerKey) + 1;
@@ -376,6 +405,49 @@ export default function PlayerInterface({ playerId }) {
     bracketState.champion
   ]);
 
+  const handleNameChange = (event) => {
+    setNameInput(event.target.value);
+    setNameDirty(true);
+    setNameFeedback(null);
+  };
+
+  const saveDisplayName = useCallback(() => {
+    if (!socket) {
+      setNameFeedback({ type: 'error', message: 'Not connected to server.' });
+      return;
+    }
+
+    if (trimmedNameInput === trimmedServerName) {
+      setNameFeedback({ type: 'info', message: 'Name unchanged.' });
+      setNameDirty(false);
+      return;
+    }
+
+    setIsSavingName(true);
+    setNameFeedback(null);
+    socket.emit('update-player-name', {
+      playerId,
+      displayName: trimmedNameInput
+    }, (response) => {
+      setIsSavingName(false);
+
+      if (response?.success) {
+        const normalized = response.displayName || '';
+        setNameInput(normalized);
+        setNameDirty(false);
+        setNameFeedback({
+          type: 'success',
+          message: normalized ? 'Name updated!' : 'Name cleared.'
+        });
+      } else {
+        setNameFeedback({
+          type: 'error',
+          message: response?.error || 'Failed to update name.'
+        });
+      }
+    });
+  }, [socket, playerId, trimmedNameInput, trimmedServerName]);
+
   const handlePromptChange = useCallback((e) => {
     const value = e.target.value;
     setPrompt(value);
@@ -491,7 +563,7 @@ export default function PlayerInterface({ playerId }) {
           <div className="bg-white border-b border-black p-2 flex items-center justify-between">
             <div className="flex items-center">
               <div className="w-4 h-4 border border-black mr-2 flex items-center justify-center text-xs">×</div>
-              <span className="font-bold text-sm">Player {playerId} - Prompt Battle</span>
+              <span className="font-bold text-sm">{playerWindowTitle} - Prompt Battle</span>
             </div>
             <div className="flex items-center text-xs">
               <span className={connected ? 'text-black' : 'text-red-600'}>
@@ -502,6 +574,55 @@ export default function PlayerInterface({ playerId }) {
 
           {/* Main Content Area */}
           <div className="p-4" style={{ minHeight: '500px' }}>
+            <div className="mb-6">
+              <label className="block font-bold mb-2" style={{ fontSize: '12px' }}>
+                Display Name
+              </label>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                <input
+                  type="text"
+                  value={nameInput}
+                  onChange={handleNameChange}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      saveDisplayName();
+                    }
+                  }}
+                  maxLength={32}
+                  placeholder="Enter how you want to appear on screen"
+                  className="flex-1 border-2 border-black px-2 py-1 bg-white"
+                  style={{
+                    fontFamily: 'Chicago, "SF Pro Display", system-ui, sans-serif',
+                    fontSize: '12px',
+                    boxShadow: 'inset 2px 2px 0px #999'
+                  }}
+                />
+                <button
+                  onClick={saveDisplayName}
+                  disabled={!canSaveName}
+                  className={`border-2 border-black px-4 py-1 font-bold ${
+                    canSaveName ? 'hover:bg-black hover:text-white' : 'bg-gray-200 cursor-not-allowed'
+                  }`}
+                  style={{
+                    fontFamily: 'Chicago, "SF Pro Display", system-ui, sans-serif',
+                    fontSize: '12px',
+                    boxShadow: '2px 2px 0px #999'
+                  }}
+                >
+                  {isSavingName ? 'Saving...' : 'Save Name'}
+                </button>
+              </div>
+              <div className="text-xs text-gray-600 mt-1" style={{ fontSize: '10px' }}>
+                Limit 32 characters. Leave blank to use the default player name.
+              </div>
+              {nameFeedback && (
+                <div className={`mt-2 text-xs ${nameFeedbackClass}`} style={{ fontSize: '10px' }}>
+                  {nameFeedback.message}
+                </div>
+              )}
+            </div>
+
             {/* Game Status */}
             <div className="mb-6 text-center">
               <div className="text-lg font-bold mb-2" style={{ fontSize: '16px' }}>
@@ -634,18 +755,24 @@ export default function PlayerInterface({ playerId }) {
                   <div className="mt-3 border border-black bg-gray-100" style={{
                     boxShadow: 'inset 1px 1px 0px #999'
                   }}>
-                    {standings.map(entry => (
-                      <div
-                        key={entry.playerId}
-                        className={`flex items-center justify-between px-2 py-1 border-b border-gray-300 last:border-b-0 ${
-                          entry.playerId === playerKey ? 'bg-yellow-200 font-bold' : ''
-                        }`}
-                        style={{ fontSize: '10px' }}
-                      >
-                        <span>Player {entry.playerId}</span>
-                        <span>{entry.score}</span>
-                      </div>
-                    ))}
+                    {standings.map(entry => {
+                      const entryDisplayName = (gameState?.players?.[entry.playerId]?.displayName || '').trim();
+                      const entryLabel = entryDisplayName
+                        ? `${entryDisplayName} (P${entry.playerId})`
+                        : `Player ${entry.playerId}`;
+                      return (
+                        <div
+                          key={entry.playerId}
+                          className={`flex items-center justify-between px-2 py-1 border-b border-gray-300 last:border-b-0 ${
+                            entry.playerId === playerKey ? 'bg-yellow-200 font-bold' : ''
+                          }`}
+                          style={{ fontSize: '10px' }}
+                        >
+                          <span>{entryLabel}</span>
+                          <span>{entry.score}</span>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
