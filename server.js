@@ -263,6 +263,38 @@ function getMatch(bracket, locator) {
   return bracket.rounds?.[roundIndex]?.matches?.[matchIndex] || null;
 }
 
+function getActiveMatchPlayers() {
+  if (gameState.competitionMode !== 'knockout' || !gameState.currentMatch) {
+    return null;
+  }
+
+  const match = getMatch(gameState.bracket, gameState.currentMatch);
+  if (!match || !Array.isArray(match.players)) {
+    return [];
+  }
+
+  return match.players
+    .map(player => (player != null ? String(player) : null))
+    .filter(Boolean);
+}
+
+function isPlayerEligibleForCurrentBattle(playerId) {
+  if (playerId == null) {
+    return false;
+  }
+
+  if (gameState.competitionMode !== 'knockout') {
+    return true;
+  }
+
+  const activePlayers = getActiveMatchPlayers();
+  if (!activePlayers || activePlayers.length === 0) {
+    return false;
+  }
+
+  return activePlayers.includes(String(playerId));
+}
+
 function emitBracketState() {
   io.emit('bracket-updated', {
     bracket: gameState.bracket,
@@ -559,17 +591,40 @@ io.on('connection', (socket) => {
   // Real-time prompt updates
   socket.on('prompt-update', (data) => {
     const { playerId, prompt } = data;
-    gameState.prompts[playerId] = prompt;
-    
+    const normalizedId = playerId != null ? String(playerId) : null;
+
+    if (!normalizedId) {
+      return;
+    }
+
+    if (!isPlayerEligibleForCurrentBattle(normalizedId)) {
+      console.log(`Ignoring prompt from player ${normalizedId} - not in active match`);
+      socket.emit('prompt-rejected', { reason: 'not-in-match' });
+      return;
+    }
+
+    gameState.prompts[normalizedId] = prompt;
+
     // Send live prompt updates to display
-    io.to('display').emit('prompt-update', { playerId, prompt });
-    io.to('admin').emit('prompt-update', { playerId, prompt });
+    io.to('display').emit('prompt-update', { playerId: normalizedId, prompt });
+    io.to('admin').emit('prompt-update', { playerId: normalizedId, prompt });
   });
 
   // Player ready status
   socket.on('player-ready', (playerId) => {
-    if (gameState.players[playerId]) {
-      gameState.players[playerId].ready = true;
+    const normalizedId = playerId != null ? String(playerId) : null;
+
+    if (!normalizedId) {
+      return;
+    }
+
+    if (!isPlayerEligibleForCurrentBattle(normalizedId)) {
+      console.log(`Ignoring ready from player ${normalizedId} - not in active match`);
+      return;
+    }
+
+    if (gameState.players[normalizedId]) {
+      gameState.players[normalizedId].ready = true;
       io.emit('game-state', gameState);
     }
   });
