@@ -510,30 +510,6 @@ export default function AdminPanel() {
   const canRemovePlayerSlot = totalPlayerSlots > minimumSlots;
   const expectedPlayers = totalPlayerSlots;
 
-  const playerSlotLinks = useMemo(() => {
-    return Array.from({ length: totalPlayerSlots }, (_, index) => {
-      const slotNumber = index + 1;
-      const slotKey = String(slotNumber);
-      return {
-        slotNumber,
-        slotKey,
-        player: gameState?.players?.[slotKey] || null
-      };
-    });
-  }, [totalPlayerSlots, gameState?.players]);
-
-  // Backwards compatibility alias for any legacy references that may still
-  // expect the old quickAccessSlots identifier in the built bundle.
-  const quickAccessSlots = playerSlotLinks;
-
-  const getPlayerAccent = useCallback((slotKey) => {
-    const numericId = Number(slotKey);
-    if (!Number.isFinite(numericId) || numericId <= 0) {
-      return SLOT_ACCENTS[0];
-    }
-    return SLOT_ACCENTS[(numericId - 1) % SLOT_ACCENTS.length];
-  }, []);
-
   const handleAddPlayerSlot = useCallback(() => {
     if (!socket) return;
     setSlotWarning('');
@@ -717,7 +693,7 @@ export default function AdminPanel() {
               </a>
             </div>
 
-            {playerSlotLinks.map(({ slotNumber, slotKey, player }) => {
+            {quickAccessSlots.map(({ slotNumber, slotKey, player }) => {
               const accent = getPlayerAccent(slotKey);
               const playerUrl = `/player/${slotNumber}`;
               const playerOriginUrl = `${window.location.origin}${playerUrl}`;
