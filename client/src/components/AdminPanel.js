@@ -3,6 +3,17 @@ import { Settings, Play, RotateCcw, Timer, Users, Monitor, Trophy, Flag, Target,
 import io from 'socket.io-client';
 import { getSocketURL, getProxiedImageUrl } from '../utils/network';
 
+const SLOT_ACCENTS = [
+  { title: 'text-blue-300', link: 'text-blue-200' },
+  { title: 'text-emerald-300', link: 'text-emerald-200' },
+  { title: 'text-purple-300', link: 'text-purple-200' },
+  { title: 'text-amber-300', link: 'text-amber-200' },
+  { title: 'text-rose-300', link: 'text-rose-200' },
+  { title: 'text-sky-300', link: 'text-sky-200' },
+  { title: 'text-fuchsia-300', link: 'text-fuchsia-200' },
+  { title: 'text-lime-300', link: 'text-lime-200' }
+];
+
 export default function AdminPanel() {
   const [socket, setSocket] = useState(null);
   const [gameState, setGameState] = useState(null);
@@ -22,6 +33,7 @@ export default function AdminPanel() {
   const [bracketState, setBracketState] = useState({ bracket: null, currentMatch: null, eliminatedPlayers: [] });
   const [matchReadyInfo, setMatchReadyInfo] = useState(null);
   const [bracketChampion, setBracketChampion] = useState(null);
+  const [slotWarning, setSlotWarning] = useState('');
 
   const presetTargets = [
     // Corporate & Business Humor (accessible)
@@ -475,7 +487,64 @@ export default function AdminPanel() {
     () => playerEntries.filter(([, player]) => player?.connected).length,
     [playerEntries]
   );
-  const expectedPlayers = Math.max(playerEntries.length, 2);
+
+  const totalPlayerSlots = useMemo(() => {
+    const slotsFromState = Number(gameState?.playerSlots);
+    if (Number.isFinite(slotsFromState) && slotsFromState > 0) {
+      return slotsFromState;
+    }
+    return Math.max(playerEntries.length, 2);
+  }, [gameState?.playerSlots, playerEntries.length]);
+
+  const highestActiveSlot = useMemo(() => {
+    return playerEntries.reduce((max, [playerId]) => {
+      const numericId = Number(playerId);
+      if (!Number.isFinite(numericId)) {
+        return max;
+      }
+      return Math.max(max, numericId);
+    }, 0);
+  }, [playerEntries]);
+
+  const minimumSlots = Math.max(2, highestActiveSlot);
+  const canRemovePlayerSlot = totalPlayerSlots > minimumSlots;
+  const expectedPlayers = totalPlayerSlots;
+
+  const playerSlotLinks = useMemo(() => {
+    return Array.from({ length: totalPlayerSlots }, (_, index) => {
+      const slotNumber = index + 1;
+      const slotKey = String(slotNumber);
+      return {
+        slotNumber,
+        slotKey,
+        player: gameState?.players?.[slotKey] || null
+      };
+    });
+  }, [totalPlayerSlots, gameState?.players]);
+
+  // Backwards compatibility alias for any legacy references that may still
+  // expect the old quickAccessSlots identifier in the built bundle.
+  const quickAccessSlots = playerSlotLinks;
+
+  const getPlayerAccent = useCallback((slotKey) => {
+    const numericId = Number(slotKey);
+    if (!Number.isFinite(numericId) || numericId <= 0) {
+      return SLOT_ACCENTS[0];
+    }
+    return SLOT_ACCENTS[(numericId - 1) % SLOT_ACCENTS.length];
+  }, []);
+
+  const handleAddPlayerSlot = useCallback(() => {
+    if (!socket) return;
+    setSlotWarning('');
+    socket.emit('add-player-slot');
+  }, [socket]);
+
+  const handleRemovePlayerSlot = useCallback(() => {
+    if (!socket) return;
+    setSlotWarning('');
+    socket.emit('remove-player-slot');
+  }, [socket]);
 
   const totalMatches = useMemo(() => {
     if (!bracketState.bracket?.rounds) return 0;
@@ -648,20 +717,35 @@ export default function AdminPanel() {
               </a>
             </div>
 
-            {playerEntries.map(([playerId, player]) => {
-              const accent = getPlayerAccent(playerId);
-              const playerUrl = `/player/${playerId}`;
+            {playerSlotLinks.map(({ slotNumber, slotKey, player }) => {
+              const accent = getPlayerAccent(slotKey);
+              const playerUrl = `/player/${slotNumber}`;
               const playerOriginUrl = `${window.location.origin}${playerUrl}`;
+              const isConnected = !!player?.connected;
+              const isReserved = !!player && !player.connected;
+              const indicatorClass = isConnected
+                ? 'bg-green-400'
+                : isReserved
+                  ? 'bg-yellow-400'
+                  : 'bg-gray-500';
+              const statusClass = isConnected
+                ? 'text-green-300'
+                : isReserved
+                  ? 'text-yellow-300'
+                  : 'text-gray-400';
+              const statusLabel = isConnected
+                ? 'Connected'
+                : isReserved
+                  ? 'Reserved'
+                  : 'Available';
 
               return (
-                <div key={playerId} className="bg-gray-700 p-4 rounded-lg space-y-2">
+                <div key={slotNumber} className="bg-gray-700 p-4 rounded-lg space-y-2">
                   <div className="flex items-center justify-between">
-                    <h3 className={`font-semibold ${accent.title}`}>Player {playerId}</h3>
+                    <h3 className={`font-semibold ${accent.title}`}>Player {slotNumber}</h3>
                     <div className="flex items-center space-x-2 text-xs">
-                      <span className={`w-2 h-2 rounded-full ${player?.connected ? 'bg-green-400' : 'bg-gray-500'}`}></span>
-                      <span className={player?.connected ? 'text-green-300' : 'text-gray-400'}>
-                        {player?.connected ? 'Connected' : 'Available'}
-                      </span>
+                      <span className={`w-2 h-2 rounded-full ${indicatorClass}`}></span>
+                      <span className={statusClass}>{statusLabel}</span>
                     </div>
                   </div>
 
